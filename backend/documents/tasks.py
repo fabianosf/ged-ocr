@@ -40,7 +40,10 @@ class SafeDocumentTask(Task):
 
     def on_failure(self, exc, task_id, args, kwargs, einfo) -> None:
         job_id, version = args
-        document = Documento.objects.get(pk=job_id)
+        document = Documento.objects.filter(pk=job_id).first()
+        if document is None:
+            logger.info("task_document_removed")
+            return
         changes = (
             {"ged_status": Documento.GEDStatus.ERRO, "ged_erro_codigo": "ged_falha_interna"}
             if self.name.endswith("sync_ged")
@@ -55,7 +58,10 @@ class SafeDocumentTask(Task):
 @shared_task(base=SafeDocumentTask)
 def process_document(job_id: str, version: int) -> None:
     with transaction.atomic():
-        document = Documento.objects.select_for_update().get(pk=job_id)
+        document = Documento.objects.select_for_update().filter(pk=job_id).first()
+        if document is None:
+            logger.info("task_document_removed")
+            return
         if document.status != Documento.Status.PENDENTE or document.versao != version:
             return
         document.status = Documento.Status.PROCESSANDO
@@ -125,7 +131,10 @@ def process_document(job_id: str, version: int) -> None:
 @shared_task(base=SafeDocumentTask)
 def sync_ged(job_id: str, version: int) -> None:
     with transaction.atomic():
-        document = Documento.objects.select_for_update().get(pk=job_id)
+        document = Documento.objects.select_for_update().filter(pk=job_id).first()
+        if document is None:
+            logger.info("task_document_removed")
+            return
         if (document.status != Documento.Status.APROVADO
                 or document.ged_status != Documento.GEDStatus.PENDENTE
                 or document.versao != version):

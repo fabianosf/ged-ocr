@@ -80,6 +80,13 @@ class Documento(models.Model):
         ordering = ["-criado_em"]
 
     @property
+    def pode_excluir(self) -> bool:
+        return (
+            self.status not in (self.Status.PENDENTE, self.Status.PROCESSANDO)
+            and self.ged_status not in (self.GEDStatus.PENDENTE, self.GEDStatus.ENVIANDO)
+        )
+
+    @property
     def pode_reprocessar(self) -> bool:
         stale = (timezone.now() - self.atualizado_em).total_seconds() > 660
         return self.status == self.Status.ERRO or (

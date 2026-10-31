@@ -6,6 +6,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.db import IntegrityError, transaction
 from django.http import FileResponse, JsonResponse
 from django.middleware.csrf import get_token
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
@@ -111,6 +112,30 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = Documento.objects.select_related("tipo")
         return queryset if self.request.user.is_staff else queryset.filter(usuario=self.request.user)
+
+    def destroy(self, request, pk=None):
+        serializer = VersionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            document = get_object_or_404(
+                self.get_queryset().select_for_update(of=("self",)), pk=pk,
+            )
+            self.check_object_permissions(request, document)
+            if document.versao != serializer.validated_data["versao"]:
+                raise Conflict()
+            if not document.pode_excluir:
+                raise Conflict("Aguarde o processamento ou envio ao GED terminar antes de excluir.")
+            try:
+                document.foto.delete(save=False)
+            except OSError as exc:
+                logger.error("photo_delete_failed correlation_id=%s", document.correlation_id)
+                raise APIException(
+                    "Não foi possível remover a foto. O documento foi mantido; tente novamente."
+                ) from exc
+            correlation_id = document.correlation_id
+            document.delete()
+        logger.info("document_deleted correlation_id=%s", correlation_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def create(self, request):
         photo = request.FILES.get("foto")
