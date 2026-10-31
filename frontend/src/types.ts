@@ -38,8 +38,10 @@ export interface Document {
   pode_reenviar_ged: boolean;
   versao: number;
   criado_em: string;
+  atualizado_em: string;
   ged_status: string;
   ged_erro_codigo: string;
+  ged_erro_mensagem: string;
 }
 export interface Page<T> {
   count: number;

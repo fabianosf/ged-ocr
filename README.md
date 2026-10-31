@@ -158,6 +158,13 @@ Configuração antes de repetir uma operação que falharia novamente.
 Erros HTTP são apresentados em português, sem JSON bruto e com uma única
 referência de correlação. Uma tentativa de recuperação em conflito atualiza
 o estado do job, sem reenfileirar silenciosamente.
+Mensagens de processamento não são erros: a tela informa recebimento, leitura ou
+necessidade de retomada, sem apresentar 11 minutos como tempo estimado.
+Erros atuais, históricos (inclusive `tipos_nao_configurados`) e falhas do GED têm
+explicações em português e próximos passos. Códigos/referências dos jobs ficam
+recolhidos em **Detalhes para suporte**; o GET mantém os códigos técnicos para
+integrações e acrescenta `ged_erro_mensagem`. Nenhuma mensagem inclui valores
+extraídos ou a resposta bruta do provedor.
 
 ## LLM e GED
 

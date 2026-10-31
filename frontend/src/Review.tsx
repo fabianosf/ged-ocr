@@ -195,7 +195,21 @@ export function Review({ document, onUpdated, onDirtyChange }: {
         </div>
       </div>
       {document.status === "aprovado" && (
-        <p className="notice">GED: {document.ged_status} {document.ged_erro_codigo}</p>
+        <div className={document.ged_status === "erro" ? "error" : "notice"}>
+          <strong>{document.ged_status === "enviado" ? "Documento enviado ao GED"
+            : document.ged_status === "erro" ? "O envio ao GED precisa de atenção"
+            : document.ged_status === "nao_configurado" ? "Documento aprovado e salvo"
+            : "Envio ao GED em andamento"}</strong>
+          <p>{document.ged_erro_mensagem || (document.ged_status === "nao_configurado"
+            ? "Configure a integração para enviar este documento ao GED."
+            : document.ged_status === "enviado" ? "O GED confirmou o recebimento."
+            : "O documento já está salvo no aplicativo. Aguarde a confirmação do envio.")}</p>
+          {document.ged_erro_codigo && <details className="support-details">
+            <summary>Detalhes para suporte</summary>
+            <p>Referência: {document.correlation_id}</p>
+            <p>Código: {document.ged_erro_codigo}</p>
+          </details>}
+        </div>
       )}
     </section>
   );

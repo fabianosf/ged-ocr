@@ -8,7 +8,7 @@ import type { Document, Page, Session } from "./types";
 const labels: Record<Document["status"], string> = {
   pendente: "Na fila", processando: "Processando", revisao: "Revisão",
   revisao_tipo: "Documento novo",
-  aprovado: "Aprovado", erro: "Erro",
+  aprovado: "Aprovado", erro: "Precisa de atenção",
 };
 
 export default function App() {
@@ -217,24 +217,38 @@ export default function App() {
               )}
             </>
           ) : selected && (
-            <section className="notice">
-              <h2>{labels[selected.status]}</h2>
-              <p>{selected.erro_mensagem || "O processamento ocorre no worker Celery."}</p>
+            <section className={selected.status === "erro" ? "error" : "processing"}
+              role={selected.status === "erro" ? "alert" : "status"}>
+              <h2>{selected.status === "erro" ? "Não foi possível concluir esta tentativa"
+                : selected.pode_reprocessar ? "O processamento precisa ser retomado"
+                : selected.status === "pendente" ? "Documento recebido"
+                : "Estamos lendo seu documento"}</h2>
+              <p>{selected.status === "erro" ? selected.erro_mensagem
+                : selected.pode_reprocessar
+                  ? "Este documento ficou sem atualização. Clique em Recuperar processamento para tentar novamente."
+                  : selected.status === "pendente"
+                    ? "Sua foto está na fila. A leitura começará automaticamente assim que o serviço estiver disponível."
+                    : "Estamos identificando os campos e extraindo os dados da foto. Você poderá conferir tudo antes de aprovar."}</p>
               {selected.erro_codigo === "llm_nao_configurado" && (
                 <p><a href="#configuracao" onClick={(event) => {
                   event.preventDefault(); openConfig();
                 }}>Abrir Configuração</a></p>
               )}
-              <small>correlation_id: {selected.correlation_id}</small>
               {selected.pode_reprocessar && (
                 selected.erro_codigo !== "llm_nao_configurado" || session.llm_configurado
               ) && <p><button disabled={busy} onClick={() => void retry(selected)}>
-                {selected.status === "erro" ? "Tentar novamente" : "Recuperar job interrompido"}
+                {selected.status === "erro" ? "Tentar novamente" : "Recuperar processamento"}
               </button></p>}
               {!selected.pode_reprocessar && (
                 selected.status === "pendente" || selected.status === "processando"
-              ) && <p>Aguarde o processamento automático. Se o job ficar interrompido,
-                a recuperação será liberada após 11 minutos sem atualização.</p>}
+              ) && <p className="muted">Esta tela se atualiza automaticamente. Não é necessário
+                esperar 11 minutos: esse prazo vale somente para recuperar uma tentativa interrompida.</p>}
+              <details className="support-details">
+                <summary>Detalhes para suporte</summary>
+                <p>Referência: {selected.correlation_id}</p>
+                {selected.status === "erro" && <p>Código: {selected.erro_codigo}</p>}
+                <p>Última atualização: {new Date(selected.atualizado_em).toLocaleString("pt-BR")}</p>
+              </details>
             </section>
           )}
         </>

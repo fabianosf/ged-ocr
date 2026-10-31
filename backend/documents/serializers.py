@@ -1,6 +1,7 @@
 from pydantic import ValidationError as ProposalValidationError
 from rest_framework import serializers
 
+from .messages import error_message
 from .models import Documento, TipoDocumento
 from .schema import InvalidDocument, check_schema
 from .services.schema_builder import Proposal, build_schema
@@ -27,6 +28,7 @@ class DocumentoSerializer(serializers.ModelSerializer):
     tipo_nome = serializers.CharField(source="tipo.nome", read_only=True, default=None)
     pode_aprovar_tipo = serializers.SerializerMethodField()
     erro_mensagem = serializers.SerializerMethodField()
+    ged_erro_mensagem = serializers.SerializerMethodField()
     pode_reprocessar = serializers.BooleanField(read_only=True)
     pode_reenviar_ged = serializers.BooleanField(read_only=True)
 
@@ -34,13 +36,10 @@ class DocumentoSerializer(serializers.ModelSerializer):
         return can_approve_type(self.context["request"].user)
 
     def get_erro_mensagem(self, obj) -> str:
-        return {
-            "llm_nao_configurado": "LLM não configurado. Acesse Configuração para orientações.",
-            "descoberta_proposta_invalida": (
-                "O LLM não retornou uma proposta de tipo válida dentro dos limites permitidos."
-            ),
-            "classificacao_resposta_invalida": "O LLM retornou uma classificação inválida.",
-        }.get(obj.erro_codigo, obj.erro_codigo)
+        return error_message(obj.erro_codigo)
+
+    def get_ged_erro_mensagem(self, obj) -> str:
+        return error_message(obj.ged_erro_codigo)
 
     class Meta:
         model = Documento
@@ -51,6 +50,7 @@ class DocumentoSerializer(serializers.ModelSerializer):
             "proposta", "proposta_original", "esquema_provisorio",
             "pode_aprovar_tipo", "erro_mensagem",
             "pode_reprocessar", "pode_reenviar_ged",
+            "ged_erro_mensagem",
         ]
         read_only_fields = fields
 
