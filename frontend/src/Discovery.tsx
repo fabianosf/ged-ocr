@@ -49,26 +49,33 @@ function ColumnEditor({ column, disabled, onChange, onRemove }: {
   );
 }
 
-function Suggestion({ field, onFocus }: {
+function Suggestion({ field, onFocus, compact = false, selected }: {
   field: Field | null;
   onFocus: (bbox: BBox) => void;
+  compact?: boolean;
+  selected: BBox;
 }) {
   if (!field) return <p className="muted">Sem sugestão para esta configuração.
     Reprocesse os ajustes para extrair este campo.</p>;
   return (
-      <div className="suggestion">
-        <strong>Valor identificado na foto</strong>
-        <span>{field.valor === null ? "Ilegível / ausente (null)" : String(field.valor)}</span>
-        <small>Confiança: {Math.round(field.confianca * 100)}% · Não revisado
-          {field.flags.length > 0 && ` · ${field.flags.join(", ")}`}</small>
-        <button type="button" disabled={!field.bbox} onClick={() => onFocus(field.bbox)}>
-          Localizar na foto
-        </button>
-        <details><summary>Coordenadas na foto</summary>
-          <small>{field.bbox ? field.bbox.join(", ") : "Não localizada"}</small>
-        </details>
-      </div>
-    );
+    <div className={`suggestion ${compact ? "compact" : ""} ${
+      field.bbox && selected === field.bbox ? "selected-field" : ""
+    }`}>
+      {!compact && <strong>Valor identificado na foto</strong>}
+      <button className="suggested-value" type="button" disabled={!field.bbox}
+        aria-label={`Localizar na foto: ${field.valor === null ? "Ilegível / ausente" : String(field.valor)}`}
+        aria-pressed={!!field.bbox && selected === field.bbox}
+        onFocus={() => onFocus(field.bbox)} onClick={() => onFocus(field.bbox)}>
+        {field.valor === null ? "Ilegível / ausente (null)" : String(field.valor)}
+      </button>
+      <small>Confiança: {Math.round(field.confianca * 100)}% · Não revisado
+        {field.flags.length > 0 && ` · ${field.flags.join(", ")}`}</small>
+      {!field.bbox && <small>Sem localização na foto.</small>}
+      {!compact && <details><summary>Coordenadas na foto</summary>
+        <small>{field.bbox ? field.bbox.join(", ") : "Não localizada"}</small>
+      </details>}
+    </div>
+  );
 }
 
 export function Discovery({ document, onUpdated, onDirtyChange }: {
@@ -85,7 +92,7 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
   const [bbox, setBbox] = useState<BBox>(null);
 
   function update(value: Proposal) {
-    setProposal(value); setDirty(true); onDirtyChange(true);
+    setProposal(value); setBbox(null); setDirty(true); onDirtyChange(true);
   }
 
   async function perform(action: "definir-tipo" | "aprovar-tipo") {
@@ -160,7 +167,7 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
               })} /></label>
             <h3>Campos · {proposal.campos.length}</h3>
             <p className="muted">Os campos e valores abaixo foram montados automaticamente.
-              Confira cada rótulo e sua sugestão na foto. Ajustes de chave ou tipo
+              Clique em um valor para destacar sua posição na foto. Ajustes de chave ou tipo
               precisam ser reprocessados; a revisão dos valores vem depois de salvar o tipo.</p>
             {proposal.campos.map((field, index) => (
               <fieldset key={index}>
@@ -168,7 +175,7 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
                 <Suggestion field={processed ? suggestedField(
                   field, [...proposal.campos, ...proposal.tabelas],
                   processed.campos, document.resultado,
-                ) : null} onFocus={setBbox} />
+                ) : null} onFocus={setBbox} selected={bbox} />
                 <details className="field-configuration">
                   <summary>Ajustar nome e tipo do campo</summary>
                 <ColumnEditor column={field} disabled={busy}
@@ -194,50 +201,66 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
               }],
             })}>Adicionar campo visível</button>
             <h3>Tabelas · {proposal.tabelas.length}</h3>
-            {proposal.tabelas.map((table, tableIndex) => (
+            {proposal.tabelas.map((table, tableIndex) => {
+              const rows = processed
+                ? suggestedRows(table.chave, proposal, processed, document.resultado) : null;
+              const processedColumns = processed?.tabelas
+                .find((item) => item.chave === table.chave)?.colunas ?? [];
+              return (
               <fieldset key={tableIndex}>
                 <legend>{table.titulo || `Tabela ${tableIndex + 1}`}</legend>
-                <label>Chave da tabela<input value={table.chave} maxLength={100}
-                  onChange={(event) => update({ ...proposal, tabelas: proposal.tabelas.map((old, index) =>
-                    index === tableIndex ? { ...old, chave: event.target.value } : old) })} /></label>
-                <label>Rótulo da tabela<input value={table.titulo} maxLength={120}
-                  onChange={(event) => update({ ...proposal, tabelas: proposal.tabelas.map((old, index) =>
-                    index === tableIndex ? { ...old, titulo: event.target.value } : old) })} /></label>
-                {table.colunas.map((column, columnIndex) => (
-                  <fieldset key={columnIndex}>
-                    <legend>{column.titulo || `Coluna ${columnIndex + 1}`}</legend>
-                    {(() => {
-                      const rows = processed
-                        ? suggestedRows(table.chave, proposal, processed, document.resultado) : null;
-                      const processedColumns = processed?.tabelas
-                        .find((item) => item.chave === table.chave)?.colunas ?? [];
-                      if (!rows) return <Suggestion field={null} onFocus={setBbox} />;
-                      if (!rows.length) return <p className="muted">Nenhuma linha identificada nesta tabela.</p>;
-                      return rows.map((row, index) => (
-                        <div key={index}>
-                          <small>Linha {index + 1}</small>
-                          <Suggestion field={suggestedField(
-                            column, table.colunas, processedColumns, row,
-                          )} onFocus={setBbox} />
-                        </div>
-                      ));
-                    })()}
-                    <details className="field-configuration">
-                      <summary>Ajustar nome e tipo da coluna</summary>
-                    <ColumnEditor column={column} disabled={busy}
-                      onChange={(updated) => update({
-                        ...proposal, tabelas: proposal.tabelas.map((old, index) => index === tableIndex
-                          ? { ...old, colunas: old.colunas.map((item, colIndex) =>
-                            colIndex === columnIndex ? updated : item) } : old),
-                      })}
-                      onRemove={() => update({
-                        ...proposal, tabelas: proposal.tabelas.map((old, index) => index === tableIndex
-                          ? { ...old, colunas: old.colunas.filter((_, colIndex) =>
-                            colIndex !== columnIndex) } : old),
-                      })} />
-                    </details>
-                  </fieldset>
-                ))}
+                <details className="field-configuration">
+                  <summary>Ajustar nome da tabela</summary>
+                  <label>Chave da tabela<input value={table.chave} maxLength={100}
+                    onChange={(event) => update({ ...proposal, tabelas: proposal.tabelas.map((old, index) =>
+                      index === tableIndex ? { ...old, chave: event.target.value } : old) })} /></label>
+                  <label>Rótulo da tabela<input value={table.titulo} maxLength={120}
+                    onChange={(event) => update({ ...proposal, tabelas: proposal.tabelas.map((old, index) =>
+                      index === tableIndex ? { ...old, titulo: event.target.value } : old) })} /></label>
+                </details>
+                <div className="table-scroll" role="region" aria-label={`Tabela: ${table.titulo}`}
+                  tabIndex={0}>
+                  <table className="document-table">
+                    <caption>{table.titulo || `Tabela ${tableIndex + 1}`} · {rows?.length ?? 0} linha(s).
+                      Role para os lados para conferir todas as colunas.</caption>
+                    <thead><tr><th scope="col">Linha</th>
+                      {table.colunas.map((column, columnIndex) => (
+                        <th scope="col" key={columnIndex}>
+                          {column.titulo || `Coluna ${columnIndex + 1}`}
+                          <details className="field-configuration">
+                            <summary>Ajustar nome e tipo da coluna</summary>
+                            <ColumnEditor column={column} disabled={busy}
+                              onChange={(updated) => update({
+                                ...proposal, tabelas: proposal.tabelas.map((old, index) => index === tableIndex
+                                  ? { ...old, colunas: old.colunas.map((item, colIndex) =>
+                                    colIndex === columnIndex ? updated : item) } : old),
+                              })}
+                              onRemove={() => update({
+                                ...proposal, tabelas: proposal.tabelas.map((old, index) => index === tableIndex
+                                  ? { ...old, colunas: old.colunas.filter((_, colIndex) =>
+                                    colIndex !== columnIndex) } : old),
+                              })} />
+                          </details>
+                        </th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {rows?.map((row, rowIndex) => (
+                        <tr key={rowIndex}>
+                          <th scope="row">{rowIndex + 1}</th>
+                          {table.colunas.map((column, columnIndex) => (
+                            <td key={columnIndex}><Suggestion compact selected={bbox}
+                              field={suggestedField(column, table.colunas, processedColumns, row)}
+                              onFocus={setBbox} /></td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {!rows && <p className="muted">Sem sugestões para esta tabela.
+                  Reprocesse os ajustes para extrair as linhas.</p>}
+                {rows?.length === 0 && <p className="muted">Nenhuma linha identificada nesta tabela.</p>}
                 <div className="actions">
                   <button type="button" disabled={table.colunas.length >= 100} onClick={() => update({
                     ...proposal, tabelas: proposal.tabelas.map((old, index) => index === tableIndex
@@ -251,7 +274,8 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
                   })}>Remover tabela</button>
                 </div>
               </fieldset>
-            ))}
+              );
+            })}
             <button type="button" disabled={rootKeys.length >= 100} onClick={() => update({
               ...proposal, tabelas: [...proposal.tabelas, {
                 chave: newKey(rootKeys, "tabela"), titulo: "",

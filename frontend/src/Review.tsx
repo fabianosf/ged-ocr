@@ -7,20 +7,24 @@ function fieldType(schema: Schema): string {
   return Array.isArray(schema.type) ? schema.type.find((type) => type !== "null")! : schema.type;
 }
 
-function FieldEditor({ label, schema, field, disabled, onChange, onFocus }: {
+function FieldEditor({ label, schema, field, disabled, onChange, onFocus, selected, compact = false }: {
   label: string;
   schema: Schema;
   field: Field;
   disabled: boolean;
   onChange: (field: Field) => void;
   onFocus: (bbox: BBox) => void;
+  selected: BBox;
+  compact?: boolean;
 }) {
   const type = fieldType(schema);
   const update = (valor: Scalar) => onChange({ ...field, valor, revisado: true });
   return (
-    <div className={`field ${field.revisado ? "reviewed" : ""}`}>
+    <div className={`field ${field.revisado ? "reviewed" : ""} ${compact ? "compact" : ""}
+      ${field.bbox && selected === field.bbox ? "selected-field" : ""}`}
+      onClick={() => onFocus(field.bbox)} onFocusCapture={() => onFocus(field.bbox)}>
       <label>
-        <strong>{label}</strong>
+        {!compact && <strong>{label}</strong>}
         {schema.description && <small>{schema.description}</small>}
         {type === "boolean" ? (
           <select aria-label={label} value={String(field.valor)} disabled={disabled}
@@ -52,6 +56,11 @@ function FieldEditor({ label, schema, field, disabled, onChange, onFocus }: {
         )}
       </label>
       <div className="field-meta">
+        <button type="button" disabled={!field.bbox}
+          aria-label={`Localizar na foto: ${label}`}
+          aria-pressed={!!field.bbox && selected === field.bbox}
+          onClick={() => onFocus(field.bbox)}>Localizar na foto</button>
+        {!field.bbox && <small>Sem localização na foto.</small>}
         <label className="check">
           <input type="checkbox" checked={field.valor === null} disabled={disabled}
             onChange={(event) => update(event.target.checked ? null : (
@@ -78,45 +87,69 @@ function emptyRow(schema: Schema): Result {
   }]));
 }
 
-function Fields({ schema, result, disabled, onChange, onFocus, onRowsChanged }: {
+function Fields({ schema, result, disabled, onChange, onFocus, onRowsChanged, selected }: {
   schema: Schema;
   result: Result;
   disabled: boolean;
   onChange: (result: Result) => void;
   onFocus: (bbox: BBox) => void;
   onRowsChanged?: (key: string, removedIndex: number | null) => void;
+  selected: BBox;
 }) {
   return Object.entries(schema.properties ?? {}).map(([key, child]) => {
     const field = result[key];
     const label = child.title ?? key;
     if (Array.isArray(field)) {
+      const items = child.items;
+      const columns = Object.entries(items?.properties ?? {});
       return (
         <fieldset key={key}>
           <legend>{label} · {field.length} linha(s)</legend>
           {field.length === 0 && <p>Nenhuma linha detectada.</p>}
-          {child.items && field.map((row, index) => (
-            <fieldset key={index}>
-              <legend>Linha {index + 1}</legend>
-              {!disabled && <button type="button" onClick={() => {
-                onChange({ ...result, [key]: field.filter((_, rowIndex) => rowIndex !== index) });
-                onRowsChanged?.(key, index);
-              }}>Remover linha</button>}
-              <Fields schema={child.items!} result={row} disabled={disabled} onFocus={onFocus}
-                onChange={(updated) => onChange({
-                  ...result, [key]: field.map((item, rowIndex) => rowIndex === index ? updated : item),
-                })} />
-            </fieldset>
-          ))}
-          {!disabled && child.items && <button type="button"
+          {items && <div className="table-scroll" role="region" aria-label={`Tabela: ${label}`}
+            tabIndex={0}>
+            <table className="document-table">
+              <caption>{label}. Role para os lados para conferir todas as colunas.</caption>
+              <thead><tr><th scope="col">Linha</th>
+                {columns.map(([columnKey, column]) => (
+                  <th key={columnKey} scope="col">{column.title ?? columnKey}</th>
+                ))}
+                {!disabled && <th scope="col">Ações</th>}
+              </tr></thead>
+              <tbody>{field.map((row, index) => (
+                <tr key={index}>
+                  <th scope="row">{index + 1}</th>
+                  {columns.map(([columnKey, column]) => {
+                    const value = row[columnKey];
+                    return <td key={columnKey}>
+                      {!Array.isArray(value) && <FieldEditor
+                        label={`${column.title ?? columnKey} · Linha ${index + 1}`}
+                        schema={column} field={value} disabled={disabled} compact selected={selected}
+                        onFocus={onFocus} onChange={(updated) => onChange({
+                          ...result, [key]: field.map((item, rowIndex) => rowIndex === index
+                            ? { ...row, [columnKey]: updated } : item),
+                        })} />}
+                    </td>;
+                  })}
+                  {!disabled && <td><button type="button"
+                    aria-label={`Remover linha ${index + 1} de ${label}`} onClick={() => {
+                      onChange({ ...result, [key]: field.filter((_, rowIndex) => rowIndex !== index) });
+                      onRowsChanged?.(key, index);
+                    }}>Remover linha</button></td>}
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>}
+          {!disabled && items && <button type="button"
             disabled={field.length >= (child.maxItems ?? 200)} onClick={() => {
-              onChange({ ...result, [key]: [...field, emptyRow(child.items!)] });
+              onChange({ ...result, [key]: [...field, emptyRow(items)] });
               onRowsChanged?.(key, null);
             }}>Adicionar linha manual</button>}
         </fieldset>
       );
     }
     return <FieldEditor key={key} label={label} schema={child} field={field}
-      disabled={disabled} onFocus={onFocus}
+      disabled={disabled} onFocus={onFocus} selected={selected}
       onChange={(updated) => onChange({ ...result, [key]: updated })} />;
   });
 }
@@ -180,15 +213,19 @@ export function Review({ document, onUpdated, onDirtyChange }: {
           ))}</ul>
         </div>
       )}
-      <p className="muted">Confira cada campo na foto. A confiança é uma estimativa, não uma garantia.</p>
+      <p className="muted">Clique em um campo ou em “Localizar na foto” para conferir sua posição.
+        A confiança é uma estimativa, não uma garantia.</p>
       <div className="review-grid">
         <DocumentPhoto jobId={document.id} bbox={bbox} />
         <div>
-          <Fields schema={document.esquema} result={result} disabled={busy || !editable}
-            onRowsChanged={(key, removedIndex) => setRowSources((current) => ({
-              ...current, [key]: removedIndex === null ? [...current[key], null]
-                : current[key].filter((_, index) => index !== removedIndex),
-            }))}
+          <Fields schema={document.esquema} result={result} disabled={busy || !editable} selected={bbox}
+            onRowsChanged={(key, removedIndex) => {
+              setBbox(null);
+              setRowSources((current) => ({
+                ...current, [key]: removedIndex === null ? [...current[key], null]
+                  : current[key].filter((_, index) => index !== removedIndex),
+              }));
+            }}
             onFocus={setBbox} onChange={(updated) => {
               setResult(updated); setDirty(true); onDirtyChange(true);
             }} />

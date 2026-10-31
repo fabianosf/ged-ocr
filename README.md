@@ -253,8 +253,17 @@ proposta original e esquema provisório, nunca o texto OCR armazenado.
 Na tela **Documento novo**, confira a foto à esquerda e edite à direita nome,
 descrição, campos e colunas: chave/rótulo, tipo, obrigatoriedade, adicionar/remover.
 Cada campo/coluna já mostra ao lado da foto seu valor sugerido da última extração,
-confiança, flags e botão para localizar a bbox. Na tabela, cada sugestão identifica
-sua linha. Configuração de chave/rótulo/tipo fica em **Ajustar nome e tipo**, sem
+confiança e flags. Clique no valor sugerido (ou navegue até ele pelo teclado) para
+destacar a bbox na foto. Na revisão, clicar no campo ou em **Localizar na foto**
+também destaca a origem, sem marcar o valor como revisado. Campos sem bbox mostram
+**Sem localização na foto**, sem inventar uma posição.
+Em telas pequenas, a foto permanece em um painel compacto no topo durante a
+conferência; o destaque desloca somente a foto, sem tirar o foco da edição.
+Tabelas aparecem em uma grade de linhas e colunas tanto na descoberta quanto na
+revisão, com rolagem horizontal/vertical e cabeçalhos fixos. Cada célula preserva
+confiança, flags e revisão individual; adicionar/remover linhas continua disponível
+na revisão e mantém a associação à extração original.
+Configuração de chave/rótulo/tipo fica em **Ajustar nome e tipo**, sem
 uma segunda lista de valores no fim da página. Valores são somente leitura:
 revisão/edição dos valores ocorre após salvar o tipo. Alterar chave/tipo, adicionar
 campos ou duplicar chaves não transfere sugestões antigas; a tela pede reextração.
