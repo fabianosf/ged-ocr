@@ -35,6 +35,16 @@ Para o host oficial `api.deepseek.com`, as chamadas desativam o modo thinking
 (raciocínio prolongado, habilitado por padrão no provedor). Isso reduz trabalho
 desnecessário de transcrição, mas não garante latência ou acurácia. A resposta
 continua estritamente validada; saída truncada/fora do contrato não é aprovada.
+`LLM_MAX_OUTPUT_TOKENS` define explicitamente o limite de saída para descoberta
+e extração (padrão 32768, intervalo 1024..65536; deve ser aceito pelo provedor).
+Classificação usa só 256 tokens. JSON compacto reduz a saída sem retirar nenhum
+metadado. `maxItems` não instrui o modelo a preencher linhas inexistentes: somente
+linhas visíveis são extraídas. O teto maior não reserva cobrança antecipada, mas
+permite respostas maiores, que podem aumentar custo e latência se geradas.
+Não há continuação de JSON truncado nem nova chamada paga automática: `length`
+gera erro explícito, mesmo se o trecho recebido parecer um JSON válido.
+Documentos muito extensos ainda podem atingir o teto/contexto do provedor; o
+administrador deve verificar o limite e o tamanho da tabela antes de repetir.
 
 Para parar: `docker compose down`. Não use `down -v` se precisar preservar os dados.
 

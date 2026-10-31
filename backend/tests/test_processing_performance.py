@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from documents.models import Documento
-from documents.pipeline import PipelineError, ask_llm, ocr_engine
+from documents.pipeline import PipelineError, ask_llm, detect_type, extract, ocr_engine
 from documents.tasks import process_document
 
 from .test_pipeline import response_for
@@ -49,6 +49,49 @@ def test_incomplete_output_fails_explicitly():
     with patch("documents.pipeline.requests.post", return_value=response):
         with pytest.raises(PipelineError, match="llm_resposta_incompleta"):
             ask_llm(b"synthetic", "JSON")
+
+
+def test_configured_output_budget_is_sent(settings):
+    settings.LLM_MAX_OUTPUT_TOKENS = 48000
+    with patch("documents.pipeline.requests.post", return_value=response_for({"ok": True})) as post:
+        assert ask_llm(b"synthetic", "JSON") == {"ok": True}
+    assert post.call_args.kwargs["json"]["max_tokens"] == 48000
+    assert "JSON compact" in post.call_args.kwargs["json"]["messages"][0]["content"]
+
+
+def test_classification_uses_small_explicit_budget():
+    with patch("documents.pipeline.requests.post", return_value=response_for({
+        "tipo_id": 1, "confianca": 0.99,
+    })) as post:
+        assert detect_type(b"synthetic", [], [{"id": 1}]) == 1
+    assert post.call_args.kwargs["json"]["max_tokens"] == 256
+
+
+def test_table_extraction_keeps_all_metadata_with_large_output_budget(settings):
+    settings.LLM_MAX_OUTPUT_TOKENS = 32768
+    columns = {f"coluna_{index}": {"type": ["string", "null"]} for index in range(21)}
+    schema = {
+        "type": "object", "additionalProperties": False,
+        "properties": {"tabela": {
+            "type": "array", "maxItems": 200,
+            "items": {"type": "object", "additionalProperties": False, "properties": columns},
+        }},
+    }
+    cell = {"valor": None, "confianca": 0, "bbox": None, "revisado": False, "flags": ["ilegivel"]}
+    output = {"tabela": [{key: dict(cell) for key in columns} for _ in range(20)]}
+    with patch("documents.pipeline.requests.post", return_value=response_for(output)) as post:
+        actual = extract(b"synthetic", [], schema)
+    assert len(actual["tabela"]) == 20
+    assert all(len(row) == 21 for row in actual["tabela"])
+    assert all(set(value) == set(cell) for row in actual["tabela"] for value in row.values())
+    assert all(
+        value["valor"] is None and not value["revisado"]
+        and value["flags"] == ["baixa_confianca", "ilegivel"]
+        for row in actual["tabela"] for value in row.values()
+    )
+    payload = post.call_args.kwargs["json"]
+    assert payload["max_tokens"] == 32768
+    assert "Não gere linhas vazias" in payload["messages"][1]["content"][0]["text"]
 
 
 def test_processing_stage_saved_before_each_call(document, document_type, result):

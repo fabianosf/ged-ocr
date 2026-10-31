@@ -83,6 +83,9 @@ CELERY_TASK_TIME_LIMIT = 600
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 LLM_MODEL = os.getenv("LLM_MODEL", "")
+LLM_MAX_OUTPUT_TOKENS = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "32768"))
+if not 1024 <= LLM_MAX_OUTPUT_TOKENS <= 65536:
+    raise ValueError("LLM_MAX_OUTPUT_TOKENS deve estar entre 1024 e 65536.")
 OCR_DETECTION_MODEL = os.getenv("OCR_DETECTION_MODEL", "PP-OCRv5_mobile_det")
 OCR_RECOGNITION_MODEL = os.getenv("OCR_RECOGNITION_MODEL", "latin_PP-OCRv5_mobile_rec")
 MIN_CONFIDENCE = float(os.getenv("MIN_CONFIDENCE", "0.7"))

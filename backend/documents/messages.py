@@ -1,7 +1,9 @@
 ERROR_MESSAGES = {
     "llm_resposta_incompleta": (
-        "O serviço de inteligência artificial interrompeu a resposta antes de concluir os dados. "
-        "Tente novamente; nenhum valor incompleto foi aprovado."
+        "A resposta da inteligência artificial atingiu o limite de tamanho antes de concluir "
+        "os dados. Nenhum resultado parcial foi aprovado. "
+        "Peça ao administrador para verificar LLM_MAX_OUTPUT_TOKENS e o tamanho da tabela "
+        "antes de tentar novamente."
     ),
     "tipos_nao_configurados": (
         "Este documento foi processado antes de existir a descoberta automática. "
