@@ -338,6 +338,15 @@ as utilidades Tailwind dos componentes. Aliases `@/` estão no Vite e TypeScript
 Para adicionar outro componente, use `npx shadcn@4.23.0 add <componente>` em
 `frontend/`, revise os imports/dependências gerados e execute testes/build.
 O CLI não faz parte das dependências permanentes do aplicativo.
+
+Jobs na fila ou processando mostram uma barra de atividade no cartão e um painel
+com as etapas reais do worker ao abrir o documento. A etapa de IA distingue
+classificação, descoberta e extração. O polling atualiza a etapa automaticamente
+e abre a revisão quando a extração termina. A barra é **indeterminada**: o provedor
+não informa porcentagem nem previsão de término. Não há avanço simulado por tempo.
+Jobs interrompidos exibem uma barra parada e orientação de recuperação; erros e
+documentos em revisão não continuam mostrando loading. Animações respeitam
+`prefers-reduced-motion` e mudanças de etapa são anunciadas por leitores de tela.
 `npm run test:e2e` executa as regressões de exclusão em navegador com uma
 prévia isolada na porta 5174 e APIs simuladas: nenhum documento real é apagado.
 Use um Chromium do Playwright disponível, ou execute

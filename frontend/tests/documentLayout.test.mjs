@@ -10,6 +10,7 @@ let Discovery;
 let Review;
 let Button;
 let Badge;
+let ProcessingProgress;
 
 before(async () => {
   server = await createServer({
@@ -20,6 +21,7 @@ before(async () => {
   ({ Review } = await server.ssrLoadModule("/src/Review.tsx"));
   ({ Button } = await server.ssrLoadModule("/src/components/ui/button.tsx"));
   ({ Badge } = await server.ssrLoadModule("/src/components/ui/badge.tsx"));
+  ({ ProcessingProgress } = await server.ssrLoadModule("/src/components/ProcessingProgress.tsx"));
 });
 after(async () => { await server?.close(); });
 
@@ -121,4 +123,39 @@ test("status badge has readable text, not just a color", () => {
   assert.match(html, /data-slot="badge"/);
   assert.match(html, /status-erro/);
   assert.match(html, /Precisa de atenção/);
+});
+
+for (const [status, etapa, label] of [
+  ["pendente", "extracao", "Aguardando na fila"],
+  ["processando", "preparacao", "Preparando a foto"],
+  ["processando", "leitura", "Lendo o documento"],
+  ["processando", "classificacao", "Identificando o tipo com IA"],
+  ["processando", "descoberta", "Descobrindo campos com IA"],
+  ["processando", "extracao", "Extraindo valores com IA"],
+  ["processando", "desconhecida", "Iniciando processamento"],
+]) {
+  test(`progress reflects ${status}/${etapa} without fabricated percentages`, () => {
+    const html = renderToStaticMarkup(createElement(ProcessingProgress, {
+      document: { status, etapa, pode_reprocessar: false },
+    }));
+    assert.match(html, /role="progressbar"/);
+    assert.ok(html.includes(label));
+    assert.match(html, /Progresso indeterminado/);
+    assert.doesNotMatch(html, /aria-valuenow|aria-valuemax|[0-9]+%/);
+    assert.match(html, /Revisão humana/);
+    assert.match(html, /Nenhum valor é aprovado automaticamente/);
+  });
+}
+
+test("stale progress stops animation and completed or failed jobs have no loading bar", () => {
+  const html = renderToStaticMarkup(createElement(ProcessingProgress, {
+    document: { status: "processando", etapa: "extracao", pode_reprocessar: true },
+  }));
+  assert.match(html, /paused/);
+  assert.match(html, /Recuperar processamento/);
+  for (const status of ["erro", "revisao", "revisao_tipo", "aprovado"]) {
+    assert.equal(renderToStaticMarkup(createElement(ProcessingProgress, {
+      document: { status, etapa: "extracao", pode_reprocessar: false },
+    })), "");
+  }
 });

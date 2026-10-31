@@ -1,6 +1,20 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@keyframes processing-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+
+@layer components {
+  .processing-track { height: 6px; overflow: hidden; border-radius: 999px; background: var(--secondary); }
+  .processing-indicator { height: 100%; width: 30%; border-radius: inherit; background: var(--primary); animation: processing-slide 1.8s ease-in-out infinite; }
+  .processing-track.paused .processing-indicator { animation: none; width: 100%; background: #d97706; opacity: .35; }
+  @media (prefers-reduced-motion: reduce) {
+    .processing-indicator { animation: none; width: 100%; opacity: .5; }
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

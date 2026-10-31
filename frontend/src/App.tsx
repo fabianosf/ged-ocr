@@ -6,6 +6,7 @@ import { Types } from "./Types";
 import { DeleteDocumentDialog } from "./components/DeleteDocumentDialog";
 import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
+import { ProcessingProgress, stageMessages } from "./components/ProcessingProgress";
 import {
   ArrowLeft, ArrowRight, CheckCircle2, CircleAlert, FileScan, Files,
   LoaderCircle, LogOut, Settings2, Trash2, UploadCloud, X,
@@ -16,13 +17,6 @@ const labels: Record<Document["status"], string> = {
   pendente: "Na fila", processando: "Processando", revisao: "Revisão",
   revisao_tipo: "Documento novo",
   aprovado: "Aprovado", erro: "Precisa de atenção",
-};
-const stageMessages: Record<string, string> = {
-  preparacao: "Preparando sua foto para leitura.",
-  leitura: "Lendo os textos da foto. No primeiro uso, o serviço precisa carregar os modelos.",
-  classificacao: "Identificando o tipo de documento com o serviço de inteligência artificial.",
-  descoberta: "Identificando os rótulos e tabelas de um documento novo.",
-  extracao: "Extraindo os valores dos campos. Aguardando a resposta do serviço de inteligência artificial.",
 };
 
 export default function App() {
@@ -286,6 +280,7 @@ export default function App() {
                   {labels[document.status]}
                 </Badge>
                 <small>{new Date(document.criado_em).toLocaleString("pt-BR")} · {document.id.slice(0, 8)}</small>
+                <ProcessingProgress document={document} compact />
               </button>
               <Button variant="ghost" size="sm" className="job-delete text-destructive hover:bg-destructive/10 hover:text-destructive"
                 disabled={busy || !document.pode_excluir}
@@ -326,18 +321,13 @@ export default function App() {
             </>
           ) : selected && (
             <section className={selected.status === "erro" ? "error" : "processing"}
-              role={selected.status === "erro" ? "alert" : "status"}>
+              role={selected.status === "erro" ? "alert" : undefined}>
               <h2>{selected.status === "erro" ? "Não foi possível concluir esta tentativa"
                 : selected.pode_reprocessar ? "O processamento precisa ser retomado"
                 : selected.status === "pendente" ? "Documento recebido"
                 : "Estamos lendo seu documento"}</h2>
-              <p>{selected.status === "erro" ? selected.erro_mensagem
-                : selected.pode_reprocessar
-                  ? "Este documento ficou sem atualização. Clique em Recuperar processamento para tentar novamente."
-                  : selected.status === "pendente"
-                    ? "Sua foto está na fila. A leitura começará automaticamente assim que o serviço estiver disponível."
-                    : stageMessages[selected.etapa]
-                      ?? "Estamos iniciando a leitura. Você poderá conferir tudo antes de aprovar."}</p>
+              {selected.status === "erro" ? <p>{selected.erro_mensagem}</p>
+                : <ProcessingProgress document={selected} />}
               {selected.erro_codigo === "llm_nao_configurado" && (
                 <p><a href="#configuracao" onClick={(event) => {
                   event.preventDefault(); openConfig();
@@ -348,10 +338,6 @@ export default function App() {
               ) && <p><button disabled={busy} onClick={() => void retry(selected)}>
                 {selected.status === "erro" ? "Tentar novamente" : "Recuperar processamento"}
               </button></p>}
-              {!selected.pode_reprocessar && (
-                selected.status === "pendente" || selected.status === "processando"
-              ) && <p className="muted">Esta tela se atualiza automaticamente. Não é necessário
-                esperar 11 minutos: esse prazo vale somente para recuperar uma tentativa interrompida.</p>}
               <details className="support-details">
                 <summary>Detalhes para suporte</summary>
                 <p>Referência: {selected.correlation_id}</p>
