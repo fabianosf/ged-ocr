@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, message } from "./api";
 import { DocumentPhoto } from "./DocumentPhoto";
+import { Button } from "./components/ui/button";
 import type { BBox, Document, Field, Result, Schema, Scalar } from "./types";
 
 function fieldType(schema: Schema): string {
@@ -198,9 +199,10 @@ export function Review({ document, onUpdated, onDirtyChange }: {
           <small>Job: {document.id} · {document.status}</small>
         </div>
         {editable && <div className="actions">
-          <button disabled={busy || !dirty} onClick={() => void perform("revisao")}>Salvar revisão</button>
-          <button className="primary" disabled={busy || dirty}
-            onClick={() => void perform("aprovar")}>Aprovar documento</button>
+          <Button variant="outline" disabled={busy || !dirty}
+            onClick={() => void perform("revisao")}>Salvar revisão</Button>
+          <Button disabled={busy || dirty}
+            onClick={() => void perform("aprovar")}>Aprovar documento</Button>
         </div>}
       </header>
       {error && <p className="error" role="alert">{error}</p>}

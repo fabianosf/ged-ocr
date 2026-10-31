@@ -137,6 +137,10 @@ Linhas novas têm confiança 0 e bbox null; a extração original permanece imut
 ### Excluir tentativas antigas
 
 Cada cartão da lista tem **Excluir**, com confirmação de exclusão definitiva.
+O modal shadcn/ui abre com foco em **Cancelar**, limita a navegação pelo teclado
+à janela e aceita Escape para cancelar. Durante o pedido, impede novos cliques
+e fechamento; em falha, mantém a confirmação aberta com erro explícito.
+Após excluir, a lista é atualizada e exibe confirmação, sem excluir outros jobs.
 Nenhum documento é apagado automaticamente. A exclusão remove o registro do job
 (incluindo OCR, valores e propostas) e sua foto do armazenamento ativo. Não remove
 o TipoDocumento cadastrado, outras tentativas, cópias de backup nem documentos
@@ -324,6 +328,21 @@ primeiro no banco e enfileira o envio. Sem URL, fica `nao_configurado` (nunca
 resposta do GED. Destinos são configurados pelo operador, não pelo upload.
 
 ## Desenvolvimento e validação
+
+A interface usa **Tailwind CSS 4**, integrado ao Vite por `@tailwindcss/vite`,
+e componentes locais **shadcn/ui** (Button, Badge, AlertDialog) com primitivas
+Radix específicas. Os tokens e o CSS do aplicativo ficam em `frontend/src/styles.css`:
+estilos dos controles antigos estão em `@layer base`, para não sobrescrever
+as utilidades Tailwind dos componentes. Aliases `@/` estão no Vite e TypeScript;
+`frontend/components.json` configura a geração de componentes.
+Para adicionar outro componente, use `npx shadcn@4.23.0 add <componente>` em
+`frontend/`, revise os imports/dependências gerados e execute testes/build.
+O CLI não faz parte das dependências permanentes do aplicativo.
+`npm run test:e2e` executa as regressões de exclusão em navegador com uma
+prévia isolada na porta 5174 e APIs simuladas: nenhum documento real é apagado.
+Use um Chromium do Playwright disponível, ou execute
+`CHROME_BIN=/usr/bin/google-chrome npm run test:e2e` quando o Chrome já estiver instalado. Os testes cobrem foco,
+Escape, erros/conflitos, bloqueio durante o pedido e ajustes ainda não salvos.
 
 Python 3.12 e Node 22:
 

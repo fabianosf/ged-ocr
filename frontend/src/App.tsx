@@ -3,6 +3,13 @@ import { ApiError, api, message, setCsrfToken } from "./api";
 import { Discovery } from "./Discovery";
 import { Review } from "./Review";
 import { Types } from "./Types";
+import { DeleteDocumentDialog } from "./components/DeleteDocumentDialog";
+import { Button } from "./components/ui/button";
+import { Badge } from "./components/ui/badge";
+import {
+  ArrowLeft, ArrowRight, CheckCircle2, CircleAlert, FileScan, Files,
+  LoaderCircle, LogOut, Settings2, Trash2, UploadCloud, X,
+} from "lucide-react";
 import type { Document, Page, Session } from "./types";
 
 const labels: Record<Document["status"], string> = {
@@ -28,6 +35,10 @@ export default function App() {
   const [config, setConfig] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [listVersion, setListVersion] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<Document | null>(null);
+  const [deleteError, setDeleteError] = useState("");
+  const [success, setSuccess] = useState("");
+  const deleteTrigger = useRef<HTMLButtonElement | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
   const dirty = useRef(false);
 
@@ -93,14 +104,7 @@ export default function App() {
 
   async function deleteDocument(document: Document) {
     if (!document.pode_excluir || busy) return;
-    const unsaved = selectedId === document.id && dirty.current
-      ? "\nOs ajustes não salvos também serão perdidos." : "";
-    if (!window.confirm(
-      `Excluir definitivamente o documento ${document.id.slice(0, 8)}?\n`
-      + "A foto, os valores e o histórico desta tentativa serão apagados. Não é possível desfazer.\n"
-      + "Tipos cadastrados e documentos já enviados ao GED não serão excluídos." + unsaved,
-    )) return;
-    setDeletingId(document.id); setBusy(true); setError("");
+    setDeletingId(document.id); setBusy(true); setDeleteError(""); setSuccess("");
     try {
       await api<void>(`documentos/${document.id}/`, {
         method: "DELETE", body: JSON.stringify({ versao: document.versao }),
@@ -111,7 +115,12 @@ export default function App() {
         results: current.results.filter((item) => item.id !== document.id),
       } : current);
       if (documents?.results.length === 1 && page > 1) setPage(page - 1);
-    } catch (cause) { setError(message(cause)); }
+      setDeleteTarget(null);
+      setSuccess("Documento excluído. A foto e os dados desta tentativa foram removidos.");
+    } catch (cause) {
+      setDeleteError(message(cause) + (cause instanceof ApiError && cause.status === 409
+        ? " Cancele e abra a confirmação novamente após atualizar a lista." : ""));
+    }
     finally {
       setDeletingId(null); setBusy(false); setListVersion((current) => current + 1);
     }
@@ -139,6 +148,7 @@ export default function App() {
       updateSession(await api<Session>("session/", { method: "DELETE" }));
       dirty.current = false;
       setSelected(null); setDocuments(null); setConfig(false); setPage(1);
+      setDeleteTarget(null); setSuccess("");
     } catch (cause) { setError(message(cause)); }
     finally { setBusy(false); }
   }
@@ -177,15 +187,33 @@ export default function App() {
   return (
     <main>
       <header className="topbar">
-        <div><h1>GED <span>OCR</span></h1><p>Da foto ao dado, com revisão humana.</p></div>
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <FileScan className="size-6" aria-hidden="true" />
+          </div>
+          <div><h1>GED <span>OCR</span></h1>
+            <p className="mb-0 text-sm text-muted-foreground">Da foto ao dado, com revisão humana.</p></div>
+        </div>
         {session?.autenticado && <nav className="actions">
-          <button onClick={() => { if (config) setConfig(false); }}>Documentos</button>
-          <button onClick={openConfig}>Configuração</button>
-          <button disabled={busy} onClick={() => void signOut()}>Sair</button>
+          <Button variant={config ? "ghost" : "secondary"} disabled={busy}
+            aria-current={!config ? "page" : undefined}
+            onClick={() => { if (config) setConfig(false); }}><Files />Documentos</Button>
+          <Button variant={config ? "secondary" : "ghost"} disabled={busy}
+            aria-current={config ? "page" : undefined} onClick={openConfig}><Settings2 />Configuração</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => void signOut()}><LogOut />Sair</Button>
         </nav>}
       </header>
       {error && <div className="error" role="alert">
-        <p>{error}</p><button onClick={() => setError("")}>Fechar mensagem</button>
+        <div className="flex items-start justify-between gap-3">
+          <p className="mb-0">{error}</p>
+          <Button variant="ghost" size="icon-sm" aria-label="Fechar mensagem"
+            onClick={() => setError("")}><X /></Button>
+        </div>
+      </div>}
+      {success && <div role="status" className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+        <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" /><span className="flex-1">{success}</span>
+        <Button variant="ghost" size="icon-sm" aria-label="Fechar confirmação"
+          onClick={() => setSuccess("")}><X /></Button>
       </div>}
       {!session ? <p>Conectando…</p> : !session.autenticado ? (
         <form className="login" onSubmit={(event) => void signIn(event)}>
@@ -214,44 +242,75 @@ export default function App() {
       ) : (
         <>
           <form className="upload" onSubmit={(event) => void upload(event)}>
+            <div className="flex w-full items-center gap-3">
+              <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><UploadCloud className="size-5" aria-hidden="true" /></div>
+              <div><h2 className="mb-1">Novo documento</h2>
+                <p className="mb-0 text-sm text-muted-foreground">Envie uma foto nítida e confira os dados extraídos.</p></div>
+            </div>
             <label>Foto do documento
               <input ref={photoInput} type="file" name="foto" accept="image/jpeg,image/png,image/webp" required />
             </label>
-            <button className="primary" disabled={busy}>Enviar para processamento</button>
+            <Button disabled={busy}>
+              {busy ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <UploadCloud />}
+              Enviar para processamento
+            </Button>
             <small>JPEG, PNG ou WEBP · até 15 MB / 40 MP · extração assíncrona</small>
           </form>
           <section className="jobs">
-            <h2>Documentos</h2>
-            <p className="muted">Exclua tentativas antigas pelo botão de cada documento.
-              Durante processamento ou envio ao GED, a exclusão fica bloqueada.</p>
-            {documents?.count === 0 && <p>Nenhum documento enviado.</p>}
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <div><h2 className="mb-1">Seus documentos</h2>
+                <p className="mb-0 text-sm text-muted-foreground">Abra para conferir ou exclua tentativas que não precisa manter.</p></div>
+              <Badge variant="secondary">{documents?.count ?? 0} documento(s)</Badge>
+            </div>
+            {documents?.count === 0 && <div className="empty-state">
+              <Files className="mx-auto mb-3 size-8 text-muted-foreground" aria-hidden="true" />
+              <p className="mb-1 font-medium">Nenhum documento enviado.</p>
+              <p className="mb-0 text-sm text-muted-foreground">Comece enviando uma foto acima.</p>
+            </div>}
             <div className="job-list">{documents?.results.map((document) => (
-              <div key={document.id} className="job-card">
-              <button disabled={busy} className={selectedId === document.id ? "selected" : ""}
+              <div key={document.id} className={`job-card ${selectedId === document.id ? "selected" : ""}`}>
+              <button disabled={busy} className="job-open" aria-pressed={selectedId === document.id}
                 onClick={() => {
                   if (selectedId !== document.id && mayLeave()) {
                     dirty.current = false; setError(""); setSelected(document);
                   }
                 }}>
+                <FileScan className="size-5 text-primary" aria-hidden="true" />
                 <strong>{document.tipo_nome ?? (document.status === "revisao_tipo"
                   ? "Documento novo" : "Tipo a identificar")}</strong>
-                <span>{labels[document.status]}</span>
+                <Badge variant={document.status === "erro" ? "outline" : "secondary"}
+                  className={`status-${document.status}`}>
+                  {document.status === "erro" ? <CircleAlert />
+                    : document.status === "aprovado" ? <CheckCircle2 />
+                    : ["processando", "pendente"].includes(document.status) ? <LoaderCircle /> : <FileScan />}
+                  {labels[document.status]}
+                </Badge>
                 <small>{new Date(document.criado_em).toLocaleString("pt-BR")} · {document.id.slice(0, 8)}</small>
               </button>
-              <button className="danger" disabled={busy || !document.pode_excluir}
+              <Button variant="ghost" size="sm" className="job-delete text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={busy || !document.pode_excluir}
                 title={document.pode_excluir ? "Excluir foto e dados definitivamente"
                   : "Aguarde o processamento ou envio ao GED terminar"}
                 aria-label={`Excluir documento ${document.id.slice(0, 8)}`}
-                onClick={() => void deleteDocument(document)}>
+                onClick={(event) => {
+                  deleteTrigger.current = event.currentTarget;
+                  setDeleteError(""); setDeleteTarget(document);
+                }}>
+                <Trash2 aria-hidden="true" />
                 {deletingId === document.id ? "Excluindo…" : "Excluir"}
-              </button>
+              </Button>
               </div>
             ))}</div>
             <div className="actions pagination">
-              <button disabled={!documents?.previous} onClick={() => setPage(page - 1)}>Anterior</button>
-              <span>Página {page} · {documents?.count ?? 0} documento(s)</span>
-              <button disabled={!documents?.next} onClick={() => setPage(page + 1)}>Próxima</button>
+              <Button variant="outline" size="sm" disabled={busy || !documents?.previous}
+                onClick={() => setPage(page - 1)}><ArrowLeft />Anterior</Button>
+              <span className="text-sm text-muted-foreground">Página {page} · {documents?.count ?? 0} documento(s)</span>
+              <Button variant="outline" size="sm" disabled={busy || !documents?.next}
+                onClick={() => setPage(page + 1)}>Próxima<ArrowRight /></Button>
             </div>
+            <p className="mt-4 mb-0 text-xs text-muted-foreground">
+              Exclusão bloqueada durante processamento ou envio ao GED. Nenhuma tentativa é apagada automaticamente.
+            </p>
           </section>
           {selected?.status === "revisao_tipo" ? (
             <Discovery key={`${selected.id}:${selected.versao}`} document={selected}
@@ -304,6 +363,14 @@ export default function App() {
           )}
         </>
       )}
+      <DeleteDocumentDialog document={deleteTarget} busy={deletingId !== null}
+        error={deleteError} unsaved={deleteTarget?.id === selectedId && dirty.current}
+        onCancel={() => { setDeleteTarget(null); setDeleteError(""); }}
+        onConfirm={() => { if (deleteTarget) void deleteDocument(deleteTarget); }}
+        onRestoreFocus={() => {
+          if (deleteTrigger.current?.isConnected) deleteTrigger.current.focus();
+          else photoInput.current?.focus();
+        }} />
     </main>
   );
 }

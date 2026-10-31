@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, message } from "./api";
 import { DocumentPhoto } from "./DocumentPhoto";
+import { Button } from "./components/ui/button";
 import { suggestedField, suggestedRows } from "./discoverySuggestions";
 import type {
   BBox, Document, Field, Proposal, ProposedColumn, ProposedField, ProposalType,
@@ -133,13 +134,14 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
       <header className="review-header">
         <div><h2>Documento novo</h2><small>Job: {document.id} · versão {document.versao}</small></div>
         <div className="actions">
-          <button disabled={busy} onClick={() => void perform("definir-tipo")}>
+          <Button variant="outline" className="h-auto whitespace-normal" disabled={busy}
+            onClick={() => void perform("definir-tipo")}>
             Reprocessar com ajustes
-          </button>
-          <button className="primary" disabled={busy || dirty || !document.pode_aprovar_tipo}
+          </Button>
+          <Button className="h-auto whitespace-normal" disabled={busy || dirty || !document.pode_aprovar_tipo}
             onClick={() => void perform("aprovar-tipo")}>
             Salvar como novo tipo e continuar revisão
-          </button>
+          </Button>
         </div>
       </header>
       <p className="notice">Confira a estrutura na foto. Use somente rótulos visíveis, inclusive

@@ -8,6 +8,8 @@ import { createServer } from "vite";
 let server;
 let Discovery;
 let Review;
+let Button;
+let Badge;
 
 before(async () => {
   server = await createServer({
@@ -16,6 +18,8 @@ before(async () => {
   });
   ({ Discovery } = await server.ssrLoadModule("/src/Discovery.tsx"));
   ({ Review } = await server.ssrLoadModule("/src/Review.tsx"));
+  ({ Button } = await server.ssrLoadModule("/src/components/ui/button.tsx"));
+  ({ Badge } = await server.ssrLoadModule("/src/components/ui/badge.tsx"));
 });
 after(async () => { await server?.close(); });
 
@@ -97,4 +101,24 @@ test("empty discovery table keeps column configuration and explicit no-rows noti
   assert.match(html, /Nenhuma linha identificada/);
   assert.match(html, /Ajustar nome e tipo da coluna/);
   assert.equal((html.match(/<th scope="row">/g) ?? []).length, 0);
+});
+
+test("shadcn destructive button exposes its action and disabled loading state", () => {
+  const html = renderToStaticMarkup(createElement(Button, {
+    variant: "destructive", disabled: true, type: "button",
+  }, "Excluindo…"));
+  assert.match(html, /data-slot="button"/);
+  assert.match(html, /data-variant="destructive"/);
+  assert.match(html, /bg-destructive/);
+  assert.match(html, /disabled=""/);
+  assert.match(html, /Excluindo…/);
+});
+
+test("status badge has readable text, not just a color", () => {
+  const html = renderToStaticMarkup(createElement(Badge, {
+    variant: "outline", className: "status-erro",
+  }, "Precisa de atenção"));
+  assert.match(html, /data-slot="badge"/);
+  assert.match(html, /status-erro/);
+  assert.match(html, /Precisa de atenção/);
 });
