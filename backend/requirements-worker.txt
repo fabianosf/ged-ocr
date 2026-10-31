@@ -1,0 +1,5 @@
+-r requirements.txt
+numpy>=1.26,<3
+opencv-python-headless>=4.10,<5
+paddlepaddle>=3.0,<3.3
+paddleocr>=3.0,<3.4

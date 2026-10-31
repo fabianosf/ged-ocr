@@ -1,0 +1,198 @@
+import { useEffect, useRef, useState } from "react";
+import { api, message, setCsrfToken } from "./api";
+import { Review } from "./Review";
+import { Types } from "./Types";
+import type { Document, Page, Session } from "./types";
+
+const labels: Record<Document["status"], string> = {
+  pendente: "Na fila", processando: "Processando", revisao: "Revisão",
+  aprovado: "Aprovado", erro: "Erro",
+};
+
+export default function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [documents, setDocuments] = useState<Page<Document> | null>(null);
+  const [selected, setSelected] = useState<Document | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
+  const [config, setConfig] = useState(false);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const dirty = useRef(false);
+
+  const mayLeave = () => {
+    if (dirty.current && !window.confirm("Descartar a revisão ainda não salva?")) return false;
+    return true;
+  };
+
+  const updateSession = (value: Session) => {
+    setCsrfToken(value.csrfToken);
+    setSession(value);
+  };
+  useEffect(() => {
+    const controller = new AbortController();
+    api<Session>("session/", { signal: controller.signal }).then(updateSession)
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) setError(message(cause));
+      });
+    return () => controller.abort();
+  }, []);
+
+  const selectedId = selected?.id;
+  const authenticated = session?.autenticado;
+  useEffect(() => {
+    if (!authenticated) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function refresh() {
+      try {
+        const list = await api<Page<Document>>(`documentos/?page=${page}`, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        setDocuments(list);
+        if (selectedId) {
+          const document = await api<Document>(`documentos/${selectedId}/`, {
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted) return;
+          setSelected((current) => dirty.current ? current : current?.id === document.id
+            && current.versao === document.versao && current.status === document.status
+            && current.ged_status === document.ged_status ? current : document);
+        }
+      } catch (cause) {
+        if (!controller.signal.aborted) setError(message(cause));
+      } finally {
+        if (!controller.signal.aborted) timer = setTimeout(() => void refresh(), 2500);
+      }
+    }
+    void refresh();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [authenticated, page, selectedId]);
+
+  async function signIn(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setError("");
+    const data = new FormData(event.currentTarget);
+    try {
+      updateSession(await api<Session>("session/", {
+        method: "POST",
+        body: new URLSearchParams({
+          username: String(data.get("username")), password: String(data.get("password")),
+        }),
+      }));
+    } catch (cause) { setError(message(cause)); }
+    finally { setBusy(false); }
+  }
+
+  async function signOut() {
+    if (!mayLeave()) return;
+    setBusy(true); setError("");
+    try {
+      updateSession(await api<Session>("session/", { method: "DELETE" }));
+      dirty.current = false;
+      setSelected(null); setDocuments(null); setConfig(false); setPage(1);
+    } catch (cause) { setError(message(cause)); }
+    finally { setBusy(false); }
+  }
+
+  async function upload(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!mayLeave()) return;
+    setBusy(true); setError("");
+    try {
+      const job = await api<{ job_id: string }>("documentos/upload/", {
+        method: "POST", body: new FormData(event.currentTarget),
+      });
+      setSelected(await api<Document>(`documentos/${job.job_id}/`));
+      dirty.current = false;
+      setPage(1);
+      if (photoInput.current) photoInput.current.value = "";
+    } catch (cause) { setError(message(cause)); }
+    finally { setBusy(false); }
+  }
+
+  async function retry(document: Document, ged = false) {
+    setBusy(true); setError("");
+    try {
+      await api(`documentos/${document.id}/${ged ? "reenviar-ged" : "reprocessar"}/`, { method: "POST" });
+      setSelected(await api<Document>(`documentos/${document.id}/`));
+    } catch (cause) { setError(message(cause)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <main>
+      <header className="topbar">
+        <div><h1>GED <span>OCR</span></h1><p>Da foto ao dado, com revisão humana.</p></div>
+        {session?.autenticado && <nav className="actions">
+          <button onClick={() => { if (config) setConfig(false); }}>Documentos</button>
+          {session.admin && <button onClick={() => {
+            if (mayLeave()) { dirty.current = false; setConfig(true); }
+          }}>Configuração</button>}
+          <button disabled={busy} onClick={() => void signOut()}>Sair</button>
+        </nav>}
+      </header>
+      {error && <p className="error" role="alert">{error}</p>}
+      {!session ? <p>Conectando…</p> : !session.autenticado ? (
+        <form className="login" onSubmit={(event) => void signIn(event)}>
+          <h2>Entrar</h2>
+          <label>Usuário<input name="username" autoComplete="username" required /></label>
+          <label>Senha<input name="password" type="password" autoComplete="current-password" required /></label>
+          <button className="primary" disabled={busy}>Entrar</button>
+        </form>
+      ) : config ? <Types /> : (
+        <>
+          <form className="upload" onSubmit={(event) => void upload(event)}>
+            <label>Foto do documento
+              <input ref={photoInput} type="file" name="foto" accept="image/jpeg,image/png,image/webp" required />
+            </label>
+            <button className="primary" disabled={busy}>Enviar para processamento</button>
+            <small>JPEG, PNG ou WEBP · até 15 MB / 40 MP · extração assíncrona</small>
+          </form>
+          <section className="jobs">
+            <h2>Documentos</h2>
+            {documents?.count === 0 && <p>Nenhum documento enviado.</p>}
+            <div className="job-list">{documents?.results.map((document) => (
+              <button key={document.id} className={selectedId === document.id ? "selected" : ""}
+                onClick={() => {
+                  if (selectedId !== document.id && mayLeave()) {
+                    dirty.current = false; setSelected(document);
+                  }
+                }}>
+                <strong>{document.tipo_nome ?? "Tipo a identificar"}</strong>
+                <span>{labels[document.status]}</span>
+                <small>{new Date(document.criado_em).toLocaleString("pt-BR")} · {document.id.slice(0, 8)}</small>
+              </button>
+            ))}</div>
+            <div className="actions pagination">
+              <button disabled={!documents?.previous} onClick={() => setPage(page - 1)}>Anterior</button>
+              <span>Página {page} · {documents?.count ?? 0} documento(s)</span>
+              <button disabled={!documents?.next} onClick={() => setPage(page + 1)}>Próxima</button>
+            </div>
+          </section>
+          {selected && (selected.status === "revisao" || selected.status === "aprovado") ? (
+            <>
+              <Review key={`${selected.id}:${selected.versao}`} document={selected}
+                onDirtyChange={(value) => { dirty.current = value; }}
+                onUpdated={(updated) => { dirty.current = false; setSelected(updated); }} />
+              {selected.status === "aprovado" && ["erro", "nao_configurado", "pendente", "enviando"]
+                .includes(selected.ged_status) && (
+                <button disabled={busy} onClick={() => void retry(selected, true)}>Reenviar ao GED</button>
+              )}
+            </>
+          ) : selected && (
+            <section className="notice">
+              <h2>{labels[selected.status]}</h2>
+              <p>{selected.erro_codigo || "O processamento ocorre no worker Celery."}</p>
+              <small>correlation_id: {selected.correlation_id}</small>
+              <p><button disabled={busy} onClick={() => void retry(selected)}>
+                Tentar novamente / recuperar job interrompido
+              </button></p>
+            </section>
+          )}
+        </>
+      )}
+    </main>
+  );
+}
