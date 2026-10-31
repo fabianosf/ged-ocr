@@ -252,8 +252,13 @@ proposta original e esquema provisório, nunca o texto OCR armazenado.
 
 Na tela **Documento novo**, confira a foto à esquerda e edite à direita nome,
 descrição, campos e colunas: chave/rótulo, tipo, obrigatoriedade, adicionar/remover.
-Os valores sugeridos são somente leitura e pertencem à última extração, não a
-ajustes locais ainda não processados; mostram confiança, bbox e flags.
+Cada campo/coluna já mostra ao lado da foto seu valor sugerido da última extração,
+confiança, flags e botão para localizar a bbox. Na tabela, cada sugestão identifica
+sua linha. Configuração de chave/rótulo/tipo fica em **Ajustar nome e tipo**, sem
+uma segunda lista de valores no fim da página. Valores são somente leitura:
+revisão/edição dos valores ocorre após salvar o tipo. Alterar chave/tipo, adicionar
+campos ou duplicar chaves não transfere sugestões antigas; a tela pede reextração.
+Alterar apenas o rótulo preserva a associação pela chave e tipo.
 **Reprocessar com ajustes** chama `definir-tipo` com proposta + versão, recria o
 esquema, limpa sugestões/revisões correntes e responde 202 depois de enfileirar.
 Só a extração roda novamente em Celery: reutiliza OCR privado, sem classificação

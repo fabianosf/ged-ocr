@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { api, message } from "./api";
 import { DocumentPhoto } from "./DocumentPhoto";
+import { suggestedField, suggestedRows } from "./discoverySuggestions";
 import type {
-  BBox, Document, Proposal, ProposedColumn, ProposedField, ProposalType, Result, Schema,
+  BBox, Document, Field, Proposal, ProposedColumn, ProposedField, ProposalType,
 } from "./types";
 
 const dataTypes: ProposalType[] = ["texto", "numero", "inteiro", "data", "booleano"];
@@ -48,40 +49,26 @@ function ColumnEditor({ column, disabled, onChange, onRemove }: {
   );
 }
 
-function Suggestions({ result, schema, onFocus }: {
-  result: Result;
-  schema: Schema;
+function Suggestion({ field, onFocus }: {
+  field: Field | null;
   onFocus: (bbox: BBox) => void;
 }) {
-  return Object.entries(result).map(([key, field]) => {
-    const child = schema.properties?.[key];
-    if (Array.isArray(field)) {
-      return (
-        <fieldset key={key}>
-          <legend>{child?.title ?? key}</legend>
-          {!field.length && <p>Nenhuma linha detectada.</p>}
-          {child?.items && field.map((row, index) => (
-            <fieldset key={index}>
-              <legend>Linha {index + 1}</legend>
-              <Suggestions result={row} schema={child.items!} onFocus={onFocus} />
-            </fieldset>
-          ))}
-        </fieldset>
-      );
-    }
-    return (
-      <div className="suggestion" key={key}>
-        <strong>{child?.title ?? key}</strong>
+  if (!field) return <p className="muted">Sem sugestão para esta configuração.
+    Reprocesse os ajustes para extrair este campo.</p>;
+  return (
+      <div className="suggestion">
+        <strong>Valor identificado na foto</strong>
         <span>{field.valor === null ? "Ilegível / ausente (null)" : String(field.valor)}</span>
         <small>Confiança: {Math.round(field.confianca * 100)}% · Não revisado
           {field.flags.length > 0 && ` · ${field.flags.join(", ")}`}</small>
-        <small>bbox: {field.bbox ? field.bbox.join(", ") : "não localizada"}</small>
         <button type="button" disabled={!field.bbox} onClick={() => onFocus(field.bbox)}>
           Localizar na foto
         </button>
+        <details><summary>Coordenadas na foto</summary>
+          <small>{field.bbox ? field.bbox.join(", ") : "Não localizada"}</small>
+        </details>
       </div>
     );
-  });
 }
 
 export function Discovery({ document, onUpdated, onDirtyChange }: {
@@ -131,6 +118,7 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
   }
 
   if (!proposal) return <p className="error" role="alert">Proposta de descoberta indisponível.</p>;
+  const processed = hasProposal(document.proposta) ? document.proposta : null;
 
   const rootKeys = [...proposal.campos, ...proposal.tabelas].map((item) => item.chave);
   return (
@@ -165,14 +153,24 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
             <legend>Proposta de estrutura</legend>
             <label>Nome sugerido<input value={proposal.nome_sugerido} maxLength={120}
               onChange={(event) => update({ ...proposal, nome_sugerido: event.target.value })} /></label>
-            <label>Descrição de reconhecimento<textarea value={proposal.descricao_reconhecimento}
+            <label>Descrição de reconhecimento<textarea className="recognition-description"
+              value={proposal.descricao_reconhecimento}
               maxLength={2000} onChange={(event) => update({
                 ...proposal, descricao_reconhecimento: event.target.value,
               })} /></label>
             <h3>Campos · {proposal.campos.length}</h3>
+            <p className="muted">Os campos e valores abaixo foram montados automaticamente.
+              Confira cada rótulo e sua sugestão na foto. Ajustes de chave ou tipo
+              precisam ser reprocessados; a revisão dos valores vem depois de salvar o tipo.</p>
             {proposal.campos.map((field, index) => (
               <fieldset key={index}>
-                <legend>Campo {index + 1}</legend>
+                <legend>{field.titulo || `Campo ${index + 1}`}</legend>
+                <Suggestion field={processed ? suggestedField(
+                  field, [...proposal.campos, ...proposal.tabelas],
+                  processed.campos, document.resultado,
+                ) : null} onFocus={setBbox} />
+                <details className="field-configuration">
+                  <summary>Ajustar nome e tipo do campo</summary>
                 <ColumnEditor column={field} disabled={busy}
                   onChange={(column) => update({
                     ...proposal, campos: proposal.campos.map((old, itemIndex) => itemIndex === index
@@ -187,6 +185,7 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
                     update({ ...proposal, campos: proposal.campos.map((old, itemIndex) =>
                       itemIndex === index ? updated : old) });
                   }} />Obrigatório (impede aprovação se null)</label>
+                </details>
               </fieldset>
             ))}
             <button type="button" disabled={rootKeys.length >= 100} onClick={() => update({
@@ -197,7 +196,7 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
             <h3>Tabelas · {proposal.tabelas.length}</h3>
             {proposal.tabelas.map((table, tableIndex) => (
               <fieldset key={tableIndex}>
-                <legend>Tabela {tableIndex + 1}</legend>
+                <legend>{table.titulo || `Tabela ${tableIndex + 1}`}</legend>
                 <label>Chave da tabela<input value={table.chave} maxLength={100}
                   onChange={(event) => update({ ...proposal, tabelas: proposal.tabelas.map((old, index) =>
                     index === tableIndex ? { ...old, chave: event.target.value } : old) })} /></label>
@@ -206,7 +205,25 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
                     index === tableIndex ? { ...old, titulo: event.target.value } : old) })} /></label>
                 {table.colunas.map((column, columnIndex) => (
                   <fieldset key={columnIndex}>
-                    <legend>Coluna {columnIndex + 1}</legend>
+                    <legend>{column.titulo || `Coluna ${columnIndex + 1}`}</legend>
+                    {(() => {
+                      const rows = processed
+                        ? suggestedRows(table.chave, proposal, processed, document.resultado) : null;
+                      const processedColumns = processed?.tabelas
+                        .find((item) => item.chave === table.chave)?.colunas ?? [];
+                      if (!rows) return <Suggestion field={null} onFocus={setBbox} />;
+                      if (!rows.length) return <p className="muted">Nenhuma linha identificada nesta tabela.</p>;
+                      return rows.map((row, index) => (
+                        <div key={index}>
+                          <small>Linha {index + 1}</small>
+                          <Suggestion field={suggestedField(
+                            column, table.colunas, processedColumns, row,
+                          )} onFocus={setBbox} />
+                        </div>
+                      ));
+                    })()}
+                    <details className="field-configuration">
+                      <summary>Ajustar nome e tipo da coluna</summary>
                     <ColumnEditor column={column} disabled={busy}
                       onChange={(updated) => update({
                         ...proposal, tabelas: proposal.tabelas.map((old, index) => index === tableIndex
@@ -218,6 +235,7 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
                           ? { ...old, colunas: old.colunas.filter((_, colIndex) =>
                             colIndex !== columnIndex) } : old),
                       })} />
+                    </details>
                   </fieldset>
                 ))}
                 <div className="actions">
@@ -241,10 +259,6 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
               }],
             })}>Adicionar tabela visível</button>
           </fieldset>
-          <h3>Valores sugeridos da última extração</h3>
-          <p className="muted">Os rótulos e valores abaixo pertencem ao esquema já processado,
-            não aos ajustes locais. Reprocesse para atualizar. Confiança não garante legibilidade.</p>
-          <Suggestions result={document.resultado} schema={document.esquema} onFocus={setBbox} />
         </div>
       </div>
     </section>

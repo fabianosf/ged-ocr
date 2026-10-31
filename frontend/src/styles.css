@@ -51,6 +51,8 @@ a { color: #087f8c; }
 .support-details { margin-top: 16px; font-size: .85rem; overflow-wrap: anywhere; }
 .support-details summary { cursor: pointer; }
 .support-details p { margin: 10px 0 0; }
+.field-configuration summary { cursor: pointer; color: #087f8c; margin: 10px 0; }
+.recognition-description { min-height: 90px; resize: vertical; }
 @media (max-width: 800px) {
   main { padding: 16px; }
   .review-grid { grid-template-columns: 1fr; }
