@@ -30,6 +30,7 @@ export interface Document {
   status: "pendente" | "processando" | "revisao_tipo" | "revisao" | "aprovado" | "erro";
   erro_codigo: string;
   erro_mensagem: string;
+  etapa: string;
   proposta: Proposal | Record<string, never>;
   proposta_original: Proposal | Record<string, never>;
   esquema_provisorio: Schema;

@@ -51,6 +51,7 @@ class DocumentoSerializer(serializers.ModelSerializer):
             "pode_aprovar_tipo", "erro_mensagem",
             "pode_reprocessar", "pode_reenviar_ged",
             "ged_erro_mensagem",
+            "etapa",
         ]
         read_only_fields = fields
 

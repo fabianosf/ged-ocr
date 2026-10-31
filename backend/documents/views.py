@@ -166,6 +166,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             document.proposta = serializer.validated_data["proposta"]
             document.esquema = build_schema(Proposal.model_validate(document.proposta))
             document.status = Documento.Status.PENDENTE
+            document.etapa = ""
             document.somente_extracao = True
             document.resultado = {}
             document.erros_validacao = []
@@ -269,6 +270,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
                     "Se estiver na fila ou processando, aguarde; recuperação após 11 minutos."
                 )
             document.status = Documento.Status.PENDENTE
+            document.etapa = ""
             document.erro_codigo = ""
             document.versao += 1
             document.save()

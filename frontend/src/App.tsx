@@ -10,6 +10,13 @@ const labels: Record<Document["status"], string> = {
   revisao_tipo: "Documento novo",
   aprovado: "Aprovado", erro: "Precisa de atenção",
 };
+const stageMessages: Record<string, string> = {
+  preparacao: "Preparando sua foto para leitura.",
+  leitura: "Lendo os textos da foto. No primeiro uso, o serviço precisa carregar os modelos.",
+  classificacao: "Identificando o tipo de documento com o serviço de inteligência artificial.",
+  descoberta: "Identificando os rótulos e tabelas de um documento novo.",
+  extracao: "Extraindo os valores dos campos. Aguardando a resposta do serviço de inteligência artificial.",
+};
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -68,6 +75,7 @@ export default function App() {
           setSelected((current) => dirty.current ? current : current?.id === document.id
             && current.versao === document.versao && current.status === document.status
             && current.ged_status === document.ged_status
+            && current.etapa === document.etapa
             && current.pode_reprocessar === document.pode_reprocessar
             && current.pode_reenviar_ged === document.pode_reenviar_ged ? current : document);
         }
@@ -228,7 +236,8 @@ export default function App() {
                   ? "Este documento ficou sem atualização. Clique em Recuperar processamento para tentar novamente."
                   : selected.status === "pendente"
                     ? "Sua foto está na fila. A leitura começará automaticamente assim que o serviço estiver disponível."
-                    : "Estamos identificando os campos e extraindo os dados da foto. Você poderá conferir tudo antes de aprovar."}</p>
+                    : stageMessages[selected.etapa]
+                      ?? "Estamos iniciando a leitura. Você poderá conferir tudo antes de aprovar."}</p>
               {selected.erro_codigo === "llm_nao_configurado" && (
                 <p><a href="#configuracao" onClick={(event) => {
                   event.preventDefault(); openConfig();
@@ -247,6 +256,7 @@ export default function App() {
                 <summary>Detalhes para suporte</summary>
                 <p>Referência: {selected.correlation_id}</p>
                 {selected.status === "erro" && <p>Código: {selected.erro_codigo}</p>}
+                {selected.etapa && <p>Etapa: {stageMessages[selected.etapa] ?? selected.etapa}</p>}
                 <p>Última atualização: {new Date(selected.atualizado_em).toLocaleString("pt-BR")}</p>
               </details>
             </section>

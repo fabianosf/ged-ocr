@@ -1,4 +1,8 @@
 ERROR_MESSAGES = {
+    "llm_resposta_incompleta": (
+        "O serviço de inteligência artificial interrompeu a resposta antes de concluir os dados. "
+        "Tente novamente; nenhum valor incompleto foi aprovado."
+    ),
     "tipos_nao_configurados": (
         "Este documento foi processado antes de existir a descoberta automática. "
         "Clique em Tentar novamente para identificar um novo tipo, sem cadastro prévio."

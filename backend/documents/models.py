@@ -61,6 +61,7 @@ class Documento(models.Model):
     resultado = models.JSONField(default=dict)
     erros_validacao = models.JSONField(default=list)
     status = models.CharField(max_length=20, choices=Status, default=Status.PENDENTE)
+    etapa = models.CharField(max_length=24, blank=True, editable=False)
     erro_codigo = models.CharField(max_length=64, blank=True)
     versao = models.PositiveIntegerField(default=1)
     criado_em = models.DateTimeField(auto_now_add=True)

@@ -45,6 +45,8 @@ services:
       context: ./backend
       target: worker
     env_file: .env
+    environment:
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
     command: celery -A config worker --loglevel=WARNING --concurrency=1
     volumes:
       - media_data:/app/media

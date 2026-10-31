@@ -26,6 +26,15 @@ O worker baixa modelos PaddleOCR no primeiro uso, exigindo internet e recursos
 de CPU/memória. O primeiro processamento pode ser mais lento. A API não importa
 OpenCV/PaddleOCR e não executa inferência. Arquivos ficam em volume compartilhado
 privado; não há rota pública de mídia.
+O modelo OCR é reutilizado por processo do worker, com duas threads de CPU, sem
+guardar fotos/OCR no cache do modelo. O Compose desativa a checagem inicial de
+conectividade com repositórios de modelos; downloads necessários continuam sujeitos
+a falha explícita. A tela informa preparação, leitura, classificação, descoberta
+ou extração via `etapa`. Logs registram etapa, duração e correlation_id, nunca os dados.
+Para o host oficial `api.deepseek.com`, as chamadas desativam o modo thinking
+(raciocínio prolongado, habilitado por padrão no provedor). Isso reduz trabalho
+desnecessário de transcrição, mas não garante latência ou acurácia. A resposta
+continua estritamente validada; saída truncada/fora do contrato não é aprovada.
 
 Para parar: `docker compose down`. Não use `down -v` se precisar preservar os dados.
 

@@ -1,5 +1,7 @@
 import logging
+from contextlib import contextmanager
 from copy import deepcopy
+from time import monotonic
 
 from billiard.exceptions import SoftTimeLimitExceeded
 from celery import Task, shared_task
@@ -15,6 +17,22 @@ from .services.discovery import discover
 from .services.schema_builder import build_schema
 
 logger = logging.getLogger("documents")
+
+
+@contextmanager
+def processing_stage(document: Documento, version: int, name: str):
+    Documento.objects.filter(
+        pk=document.pk, versao=version, status=Documento.Status.PROCESSANDO,
+    ).update(etapa=name, atualizado_em=timezone.now())
+    logger.info("stage_started correlation_id=%s stage=%s", document.correlation_id, name)
+    started = monotonic()
+    try:
+        yield
+    finally:
+        logger.info(
+            "stage_finished correlation_id=%s stage=%s duration_ms=%s",
+            document.correlation_id, name, round((monotonic() - started) * 1000),
+        )
 
 
 class SafeDocumentTask(Task):
@@ -49,16 +67,22 @@ def process_document(job_id: str, version: int) -> None:
         ))
         if not settings.LLM_API_KEY or not settings.LLM_MODEL:
             raise PipelineError("llm_nao_configurado")
-        image = prepare_image(document.foto.path)
+        with processing_stage(document, version, "preparacao"):
+            image = prepare_image(document.foto.path)
         if document.somente_extracao:
             ocr, type_id, schema = document.ocr, None, document.esquema
         else:
-            ocr = run_ocr(image)
-            type_id = detect_type(image, ocr, [
-                {key: item[key] for key in ("id", "nome", "descricao")} for item in types
-            ]) if types else None
+            with processing_stage(document, version, "leitura"):
+                ocr = run_ocr(image)
+            type_id = None
+            if types:
+                with processing_stage(document, version, "classificacao"):
+                    type_id = detect_type(image, ocr, [
+                        {key: item[key] for key in ("id", "nome", "descricao")} for item in types
+                    ])
             if type_id is None:
-                proposal = discover(image, ocr)
+                with processing_stage(document, version, "descoberta"):
+                    proposal = discover(image, ocr)
                 schema = build_schema(proposal)
                 # Save once before extraction, so its failure cannot lose the original proposal.
                 with transaction.atomic():
@@ -76,7 +100,8 @@ def process_document(job_id: str, version: int) -> None:
             else:
                 schema = next(item["esquema"] for item in types if item["id"] == type_id)
         check_schema(schema)
-        result = extract(image, ocr, schema)
+        with processing_stage(document, version, "extracao"):
+            result = extract(image, ocr, schema)
         changes = {"extraido": result} if not document.extraido else {}
         Documento.objects.filter(
             pk=job_id, versao=version, status=Documento.Status.PROCESSANDO,
@@ -84,7 +109,7 @@ def process_document(job_id: str, version: int) -> None:
             **changes, tipo_id=type_id, esquema=schema, resultado=result, extracao_versao=version,
             erros_validacao=validation_errors(result, schema),
             status=Documento.Status.REVISAO_TIPO if type_id is None else Documento.Status.REVISAO,
-            atualizado_em=timezone.now(), erro_codigo="",
+            atualizado_em=timezone.now(), erro_codigo="", etapa="concluido",
         )
         logger.info("process_completed correlation_id=%s", document.correlation_id)
     except (PipelineError, InvalidDocument, SoftTimeLimitExceeded, OSError) as exc:
