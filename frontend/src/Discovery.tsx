@@ -118,7 +118,14 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
   async function refresh() {
     if (dirty && !window.confirm("Descartar os ajustes locais e atualizar o job?")) return;
     setBusy(true); setError("");
-    try { onUpdated(await api<Document>(`documentos/${document.id}/`)); }
+    try {
+      const updated = await api<Document>(`documentos/${document.id}/`);
+      setProposal(hasProposal(updated.proposta) ? updated.proposta : null);
+      setDirty(false);
+      setBbox(null);
+      onDirtyChange(false);
+      onUpdated(updated);
+    }
     catch (cause) { setError(message(cause)); }
     finally { setBusy(false); }
   }
