@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, message } from "./api";
+import { DocumentPhoto } from "./DocumentPhoto";
 import type { BBox, Document, Field, Result, Schema, Scalar } from "./types";
 
 function fieldType(schema: Schema): string {
@@ -181,15 +182,7 @@ export function Review({ document, onUpdated, onDirtyChange }: {
       )}
       <p className="muted">Confira cada campo na foto. A confiança é uma estimativa, não uma garantia.</p>
       <div className="review-grid">
-        <div className="photo-pane">
-          <div className="photo">
-            <img src={`/api/documentos/${document.id}/foto/`} alt="Foto do documento para conferência" />
-            {bbox && <div className="bbox" style={{
-              left: `${bbox[0] * 100}%`, top: `${bbox[1] * 100}%`,
-              width: `${(bbox[2] - bbox[0]) * 100}%`, height: `${(bbox[3] - bbox[1]) * 100}%`,
-            }} />}
-          </div>
-        </div>
+        <DocumentPhoto jobId={document.id} bbox={bbox} />
         <div>
           <Fields schema={document.esquema} result={result} disabled={busy || !editable}
             onRowsChanged={(key, removedIndex) => setRowSources((current) => ({

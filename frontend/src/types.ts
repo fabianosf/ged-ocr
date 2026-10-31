@@ -27,8 +27,13 @@ export interface Document {
   esquema: Schema;
   resultado: Result;
   erros_validacao: { campo: string; regra: string; mensagem: string }[];
-  status: "pendente" | "processando" | "revisao" | "aprovado" | "erro";
+  status: "pendente" | "processando" | "revisao_tipo" | "revisao" | "aprovado" | "erro";
   erro_codigo: string;
+  erro_mensagem: string;
+  proposta: Proposal | Record<string, never>;
+  proposta_original: Proposal | Record<string, never>;
+  esquema_provisorio: Schema;
+  pode_aprovar_tipo: boolean;
   versao: number;
   criado_em: string;
   ged_status: string;
@@ -44,6 +49,28 @@ export interface Session {
   autenticado: boolean;
   admin: boolean;
   csrfToken: string;
+  pode_criar_tipo: boolean;
+  llm_configurado: boolean;
+}
+export type ProposalType = "texto" | "numero" | "inteiro" | "data" | "booleano";
+export interface ProposedColumn {
+  chave: string;
+  titulo: string;
+  tipo: ProposalType;
+}
+export interface ProposedField extends ProposedColumn {
+  obrigatorio: boolean;
+}
+export interface ProposedTable {
+  chave: string;
+  titulo: string;
+  colunas: ProposedColumn[];
+}
+export interface Proposal {
+  nome_sugerido: string;
+  descricao_reconhecimento: string;
+  campos: ProposedField[];
+  tabelas: ProposedTable[];
 }
 export interface DocumentType {
   id: number;

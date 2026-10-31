@@ -44,6 +44,9 @@ legend { font-weight: 600; padding: 0 6px; }
 .config form { max-width: 850px; margin-top: 24px; }
 .config textarea { min-height: 80px; }
 .config .schema-editor { min-height: 340px; font-family: monospace; font-size: .9rem; }
+.proposal-column { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; align-items: start; }
+.suggestion { display: grid; gap: 8px; border: 1px solid #dce4e9; padding: 14px; border-radius: 6px; margin-bottom: 12px; overflow-wrap: anywhere; }
+a { color: #087f8c; }
 @media (max-width: 800px) {
   main { padding: 16px; }
   .review-grid { grid-template-columns: 1fr; }

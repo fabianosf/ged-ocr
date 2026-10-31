@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { api, message, setCsrfToken } from "./api";
+import { Discovery } from "./Discovery";
 import { Review } from "./Review";
 import { Types } from "./Types";
 import type { Document, Page, Session } from "./types";
 
 const labels: Record<Document["status"], string> = {
   pendente: "Na fila", processando: "Processando", revisao: "Revisão",
+  revisao_tipo: "Documento novo",
   aprovado: "Aprovado", erro: "Erro",
 };
 
@@ -23,6 +25,13 @@ export default function App() {
   const mayLeave = () => {
     if (dirty.current && !window.confirm("Descartar a revisão ainda não salva?")) return false;
     return true;
+  };
+  const openConfig = () => {
+    if (mayLeave()) { dirty.current = false; setConfig(true); }
+  };
+  const onUpdated = (document: Document) => {
+    dirty.current = false;
+    setSelected(document);
   };
 
   const updateSession = (value: Session) => {
@@ -127,9 +136,7 @@ export default function App() {
         <div><h1>GED <span>OCR</span></h1><p>Da foto ao dado, com revisão humana.</p></div>
         {session?.autenticado && <nav className="actions">
           <button onClick={() => { if (config) setConfig(false); }}>Documentos</button>
-          {session.admin && <button onClick={() => {
-            if (mayLeave()) { dirty.current = false; setConfig(true); }
-          }}>Configuração</button>}
+          <button onClick={openConfig}>Configuração</button>
           <button disabled={busy} onClick={() => void signOut()}>Sair</button>
         </nav>}
       </header>
@@ -141,7 +148,24 @@ export default function App() {
           <label>Senha<input name="password" type="password" autoComplete="current-password" required /></label>
           <button className="primary" disabled={busy}>Entrar</button>
         </form>
-      ) : config ? <Types /> : (
+      ) : config ? (
+        <>
+          <section id="configuracao">
+            <h2>Configuração de processamento</h2>
+            <p className={session.llm_configurado ? "notice" : "error"}>
+              {session.llm_configurado ? "LLM configurado no servidor."
+                : "LLM não configurado. Não é possível descobrir ou extrair documentos ainda."}
+            </p>
+            <p>O administrador do servidor deve configurar <code>LLM_BASE_URL</code>,{" "}
+              <code>LLM_API_KEY</code> e <code>LLM_MODEL</code> no ambiente e recriar backend e worker.
+              Não informe chaves em campos de documento.</p>
+            <p>Configure <code>TYPE_MIN_CONFIDENCE</code> para o limiar de classificação (0 a 1).
+              Fotos/OCR são enviados ao provedor configurado; confirme autorização e retenção.</p>
+            {!session.admin && <p>O cadastro e edição global de tipos é reservado à equipe.</p>}
+          </section>
+          {session.admin && <Types />}
+        </>
+      ) : (
         <>
           <form className="upload" onSubmit={(event) => void upload(event)}>
             <label>Foto do documento
@@ -160,7 +184,8 @@ export default function App() {
                     dirty.current = false; setSelected(document);
                   }
                 }}>
-                <strong>{document.tipo_nome ?? "Tipo a identificar"}</strong>
+                <strong>{document.tipo_nome ?? (document.status === "revisao_tipo"
+                  ? "Documento novo" : "Tipo a identificar")}</strong>
                 <span>{labels[document.status]}</span>
                 <small>{new Date(document.criado_em).toLocaleString("pt-BR")} · {document.id.slice(0, 8)}</small>
               </button>
@@ -171,11 +196,14 @@ export default function App() {
               <button disabled={!documents?.next} onClick={() => setPage(page + 1)}>Próxima</button>
             </div>
           </section>
-          {selected && (selected.status === "revisao" || selected.status === "aprovado") ? (
+          {selected?.status === "revisao_tipo" ? (
+            <Discovery key={`${selected.id}:${selected.versao}`} document={selected}
+              onDirtyChange={(value) => { dirty.current = value; }} onUpdated={onUpdated} />
+          ) : selected && (selected.status === "revisao" || selected.status === "aprovado") ? (
             <>
               <Review key={`${selected.id}:${selected.versao}`} document={selected}
                 onDirtyChange={(value) => { dirty.current = value; }}
-                onUpdated={(updated) => { dirty.current = false; setSelected(updated); }} />
+                onUpdated={onUpdated} />
               {selected.status === "aprovado" && ["erro", "nao_configurado", "pendente", "enviando"]
                 .includes(selected.ged_status) && (
                 <button disabled={busy} onClick={() => void retry(selected, true)}>Reenviar ao GED</button>
@@ -184,7 +212,12 @@ export default function App() {
           ) : selected && (
             <section className="notice">
               <h2>{labels[selected.status]}</h2>
-              <p>{selected.erro_codigo || "O processamento ocorre no worker Celery."}</p>
+              <p>{selected.erro_mensagem || "O processamento ocorre no worker Celery."}</p>
+              {selected.erro_codigo === "llm_nao_configurado" && (
+                <p><a href="#configuracao" onClick={(event) => {
+                  event.preventDefault(); openConfig();
+                }}>Abrir Configuração</a></p>
+              )}
               <small>correlation_id: {selected.correlation_id}</small>
               <p><button disabled={busy} onClick={() => void retry(selected)}>
                 Tentar novamente / recuperar job interrompido
