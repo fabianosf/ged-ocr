@@ -7,9 +7,15 @@ import { DeleteDocumentDialog } from "./components/DeleteDocumentDialog";
 import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
 import { ProcessingProgress, stageMessages } from "./components/ProcessingProgress";
+import { Input } from "./components/ui/input";
+import { Card, CardContent, CardHeader } from "./components/ui/card";
+import { ShineBorder } from "./components/ui/shine-border";
+import { GridPattern } from "./components/ui/grid-pattern";
+import { Notice } from "./components/Notice";
+import { useConfirmation } from "./components/useConfirmation";
 import {
   ArrowLeft, ArrowRight, CheckCircle2, CircleAlert, FileScan, Files,
-  LoaderCircle, LogOut, Settings2, Trash2, UploadCloud, X,
+  LoaderCircle, LogOut, RotateCw, Settings2, Trash2, UploadCloud, X,
 } from "lucide-react";
 import type { Document, Page, Session } from "./types";
 
@@ -35,13 +41,16 @@ export default function App() {
   const deleteTrigger = useRef<HTMLButtonElement | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
   const dirty = useRef(false);
+  const confirmation = useConfirmation();
 
-  const mayLeave = () => {
-    if (dirty.current && !window.confirm("Descartar a revisão ainda não salva?")) return false;
+  const mayLeave = async () => {
+    if (dirty.current && !await confirmation.confirm(
+      "A revisão ainda não foi salva. Ao continuar, seus ajustes locais serão perdidos.",
+    )) return false;
     return true;
   };
-  const openConfig = () => {
-    if (mayLeave()) { dirty.current = false; setConfig(true); }
+  const openConfig = async () => {
+    if (await mayLeave()) { dirty.current = false; setConfig(true); }
   };
   const onUpdated = (document: Document) => {
     dirty.current = false;
@@ -136,7 +145,7 @@ export default function App() {
   }
 
   async function signOut() {
-    if (!mayLeave()) return;
+    if (!await mayLeave()) return;
     setBusy(true); setError("");
     try {
       updateSession(await api<Session>("session/", { method: "DELETE" }));
@@ -149,11 +158,12 @@ export default function App() {
 
   async function upload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!mayLeave()) return;
+    const data = new FormData(event.currentTarget);
+    if (!await mayLeave()) return;
     setBusy(true); setError("");
     try {
       const job = await api<{ job_id: string }>("documentos/upload/", {
-        method: "POST", body: new FormData(event.currentTarget),
+        method: "POST", body: data,
       });
       setSelected(await api<Document>(`documentos/${job.job_id}/`));
       dirty.current = false;
@@ -179,51 +189,80 @@ export default function App() {
   }
 
   return (
-    <main>
+    <main className="app-shell">
       <header className="topbar">
         <div className="flex items-center gap-3">
           <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <FileScan className="size-6" aria-hidden="true" />
           </div>
           <div><h1>GED <span>OCR</span></h1>
-            <p className="mb-0 text-sm text-muted-foreground">Da foto ao dado, com revisão humana.</p></div>
+            <p className="mb-0 text-xs tracking-wide text-muted-foreground">INTELIGÊNCIA DOCUMENTAL</p></div>
         </div>
         {session?.autenticado && <nav className="actions">
           <Button variant={config ? "ghost" : "secondary"} disabled={busy}
             aria-current={!config ? "page" : undefined}
             onClick={() => { if (config) setConfig(false); }}><Files />Documentos</Button>
           <Button variant={config ? "secondary" : "ghost"} disabled={busy}
-            aria-current={config ? "page" : undefined} onClick={openConfig}><Settings2 />Configuração</Button>
+            aria-current={config ? "page" : undefined} onClick={() => void openConfig()}><Settings2 />Configuração</Button>
           <Button variant="ghost" disabled={busy} onClick={() => void signOut()}><LogOut />Sair</Button>
         </nav>}
       </header>
-      {error && <div className="error" role="alert">
+      {error && <Notice tone="error">
         <div className="flex items-start justify-between gap-3">
           <p className="mb-0">{error}</p>
           <Button variant="ghost" size="icon-sm" aria-label="Fechar mensagem"
             onClick={() => setError("")}><X /></Button>
         </div>
-      </div>}
+      </Notice>}
       {success && <div role="status" className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
         <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" /><span className="flex-1">{success}</span>
         <Button variant="ghost" size="icon-sm" aria-label="Fechar confirmação"
           onClick={() => setSuccess("")}><X /></Button>
       </div>}
-      {!session ? <p>Conectando…</p> : !session.autenticado ? (
-        <form className="login" onSubmit={(event) => void signIn(event)}>
-          <h2>Entrar</h2>
-          <label>Usuário<input name="username" autoComplete="username" required /></label>
-          <label>Senha<input name="password" type="password" autoComplete="current-password" required /></label>
-          <button className="primary" disabled={busy}>Entrar</button>
-        </form>
+      {!session ? <div role="status" className="flex items-center gap-2 py-12 text-muted-foreground">
+        <LoaderCircle className="size-5 animate-spin motion-reduce:animate-none" />Conectando…
+      </div> : !session.autenticado ? (
+        <div className="login-layout">
+          <div className="login-story relative overflow-hidden">
+            <GridPattern className="stroke-white/10 [mask-image:linear-gradient(to_bottom,white,transparent)]" />
+            <div className="relative">
+            <Badge variant="outline" className="mb-5 border-white/25 text-white">GED OCR · Workspace</Badge>
+            <h2>Da foto ao dado.<br />Com você no controle.</h2>
+            <p>Transforme documentos em informações estruturadas.
+              Inteligência artificial para extrair, revisão humana para conferir.</p>
+            <div className="mt-8 flex flex-wrap gap-3 text-sm">
+              <span><FileScan className="size-4" />Leitura inteligente</span>
+              <span><CheckCircle2 className="size-4" />Revisão obrigatória</span>
+            </div>
+            </div>
+          </div>
+          <Card className="login relative">
+            <ShineBorder shineColor={["#0f5260", "#57a7a0", "#b7dbd5"]} aria-hidden="true" />
+            <CardHeader><h2 className="mb-0 text-2xl">Acesse seu workspace</h2>
+              <p className="mb-0 text-sm text-muted-foreground">Entre para enviar e revisar documentos.</p></CardHeader>
+            <CardContent>
+              <form onSubmit={(event) => void signIn(event)}>
+                <fieldset disabled={busy} className="border-0 p-0">
+                  <label>Usuário<Input name="username" autoComplete="username" required /></label>
+                  <label>Senha<Input name="password" type="password" autoComplete="current-password" required /></label>
+                  <Button className="mt-2 w-full" disabled={busy}>
+                    {busy && <LoaderCircle className="animate-spin motion-reduce:animate-none" />}Entrar
+                  </Button>
+                </fieldset>
+              </form>
+              <p className="mb-0 mt-5 text-xs text-muted-foreground">A conferência humana é parte de cada processamento.</p>
+            </CardContent>
+          </Card>
+        </div>
       ) : config ? (
         <>
           <section id="configuracao">
+            <Badge variant="secondary" className="mb-2"><Settings2 />Ambiente e integração</Badge>
             <h2>Configuração de processamento</h2>
-            <p className={session.llm_configurado ? "notice" : "error"}>
+            <Notice tone={session.llm_configurado ? "success" : "error"}>
               {session.llm_configurado ? "LLM configurado no servidor."
                 : "LLM não configurado. Não é possível descobrir ou extrair documentos ainda."}
-            </p>
+            </Notice>
             <p>O administrador do servidor deve configurar <code>LLM_BASE_URL</code>,{" "}
               <code>LLM_API_KEY</code> e <code>LLM_MODEL</code> no ambiente e recriar backend e worker.
               Não informe chaves em campos de documento.</p>
@@ -235,14 +274,22 @@ export default function App() {
         </>
       ) : (
         <>
+          <div className="workspace-intro">
+            <div><Badge variant="secondary" className="mb-2">Workspace documental</Badge>
+              <h2>Documentos organizados.<br className="sm:hidden" /> Dados conferidos.</h2>
+              <p>Envie, acompanhe a extração e valide cada informação em um só lugar.</p></div>
+            <div className="workspace-seal"><CheckCircle2 className="size-5" aria-hidden="true" />
+              <span>IA para extrair<br /><strong>Você para validar</strong></span></div>
+          </div>
           <form className="upload" onSubmit={(event) => void upload(event)}>
+            <ShineBorder shineColor={["#0f5260", "#57a7a0"]} duration={20} aria-hidden="true" />
             <div className="flex w-full items-center gap-3">
               <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><UploadCloud className="size-5" aria-hidden="true" /></div>
               <div><h2 className="mb-1">Novo documento</h2>
                 <p className="mb-0 text-sm text-muted-foreground">Envie uma foto nítida e confira os dados extraídos.</p></div>
             </div>
             <label>Foto do documento
-              <input ref={photoInput} type="file" name="foto" accept="image/jpeg,image/png,image/webp" required />
+              <Input ref={photoInput} type="file" name="foto" accept="image/jpeg,image/png,image/webp" required disabled={busy} />
             </label>
             <Button disabled={busy}>
               {busy ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <UploadCloud />}
@@ -263,9 +310,11 @@ export default function App() {
             </div>}
             <div className="job-list">{documents?.results.map((document) => (
               <div key={document.id} className={`job-card ${selectedId === document.id ? "selected" : ""}`}>
-              <button disabled={busy} className="job-open" aria-pressed={selectedId === document.id}
-                onClick={() => {
-                  if (selectedId !== document.id && mayLeave()) {
+              <Button variant="ghost" disabled={busy}
+                className="job-open grid h-auto w-full items-start justify-stretch justify-items-start gap-2.5 whitespace-normal rounded-none p-4 text-left"
+                aria-pressed={selectedId === document.id}
+                onClick={async () => {
+                  if (selectedId !== document.id && await mayLeave()) {
                     dirty.current = false; setError(""); setSelected(document);
                   }
                 }}>
@@ -281,7 +330,7 @@ export default function App() {
                 </Badge>
                 <small>{new Date(document.criado_em).toLocaleString("pt-BR")} · {document.id.slice(0, 8)}</small>
                 <ProcessingProgress document={document} compact />
-              </button>
+              </Button>
               <Button variant="ghost" size="sm" className="job-delete text-destructive hover:bg-destructive/10 hover:text-destructive"
                 disabled={busy || !document.pode_excluir}
                 title={document.pode_excluir ? "Excluir foto e dados definitivamente"
@@ -316,7 +365,8 @@ export default function App() {
                 onDirtyChange={(value) => { dirty.current = value; }}
                 onUpdated={onUpdated} />
               {selected.pode_reenviar_ged && (
-                <button disabled={busy} onClick={() => void retry(selected, true)}>Reenviar ao GED</button>
+                <Button variant="outline" disabled={busy}
+                  onClick={() => void retry(selected, true)}><RotateCw />Reenviar ao GED</Button>
               )}
             </>
           ) : selected && (
@@ -330,14 +380,14 @@ export default function App() {
                 : <ProcessingProgress document={selected} />}
               {selected.erro_codigo === "llm_nao_configurado" && (
                 <p><a href="#configuracao" onClick={(event) => {
-                  event.preventDefault(); openConfig();
+                  event.preventDefault(); void openConfig();
                 }}>Abrir Configuração</a></p>
               )}
               {selected.pode_reprocessar && (
                 selected.erro_codigo !== "llm_nao_configurado" || session.llm_configurado
-              ) && <p><button disabled={busy} onClick={() => void retry(selected)}>
+              ) && <p><Button variant="outline" disabled={busy} onClick={() => void retry(selected)}>
                 {selected.status === "erro" ? "Tentar novamente" : "Recuperar processamento"}
-              </button></p>}
+              </Button></p>}
               <details className="support-details">
                 <summary>Detalhes para suporte</summary>
                 <p>Referência: {selected.correlation_id}</p>
@@ -347,6 +397,10 @@ export default function App() {
               </details>
             </section>
           )}
+          <footer className="app-footer">
+            <span>GED OCR · Inteligência documental</span><span>Extração assistida. Decisão humana.</span>
+          </footer>
+          {confirmation.dialog}
         </>
       )}
       <DeleteDocumentDialog document={deleteTarget} busy={deletingId !== null}

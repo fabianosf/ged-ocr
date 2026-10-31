@@ -330,14 +330,23 @@ resposta do GED. Destinos são configurados pelo operador, não pelo upload.
 ## Desenvolvimento e validação
 
 A interface usa **Tailwind CSS 4**, integrado ao Vite por `@tailwindcss/vite`,
-e componentes locais **shadcn/ui** (Button, Badge, AlertDialog) com primitivas
-Radix específicas. Os tokens e o CSS do aplicativo ficam em `frontend/src/styles.css`:
-estilos dos controles antigos estão em `@layer base`, para não sobrescrever
+e componentes locais **shadcn/ui** (Button, Badge, AlertDialog, Input, Textarea,
+NativeSelect, Checkbox, Card e Alert) com primitivas Radix específicas.
+A identidade clara usa azul-petróleo, neutros e cores semânticas para avisos.
+Login, envio, lista, descoberta, revisão e configuração compartilham os controles.
+**Magic UI** fornece Shine Border nas áreas de entrada e Grid Pattern no login;
+efeitos são decorativos, não capturam cliques e respeitam movimento reduzido.
+A licença MIT acompanha os componentes em `frontend/src/components/ui/MAGIC-UI-LICENSE`.
+Não há recursos visuais carregados de CDNs nem biblioteca de animação adicional.
+Os tokens e o CSS do aplicativo ficam em `frontend/src/styles.css`: tipografia
+em `@layer base` e superfícies/layout em `@layer components`, sem substituir
 as utilidades Tailwind dos componentes. Aliases `@/` estão no Vite e TypeScript;
 `frontend/components.json` configura a geração de componentes.
 Para adicionar outro componente, use `npx shadcn@4.23.0 add <componente>` em
 `frontend/`, revise os imports/dependências gerados e execute testes/build.
 O CLI não faz parte das dependências permanentes do aplicativo.
+As confirmações de descarte de ajustes também usam AlertDialog: cancelar mantém
+os dados locais; confirmar descarta somente os ajustes e executa a ação solicitada.
 
 Jobs na fila ou processando mostram uma barra de atividade no cartão e um painel
 com as etapas reais do worker ao abrir o documento. A etapa de IA distingue
@@ -347,7 +356,7 @@ não informa porcentagem nem previsão de término. Não há avanço simulado po
 Jobs interrompidos exibem uma barra parada e orientação de recuperação; erros e
 documentos em revisão não continuam mostrando loading. Animações respeitam
 `prefers-reduced-motion` e mudanças de etapa são anunciadas por leitores de tela.
-`npm run test:e2e` executa as regressões de exclusão em navegador com uma
+`npm run test:e2e` executa as regressões de interface em navegador com uma
 prévia isolada na porta 5174 e APIs simuladas: nenhum documento real é apagado.
 Use um Chromium do Playwright disponível, ou execute
 `CHROME_BIN=/usr/bin/google-chrome npm run test:e2e` quando o Chrome já estiver instalado. Os testes cobrem foco,

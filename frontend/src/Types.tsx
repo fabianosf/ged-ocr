@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
 import { api, message } from "./api";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { Textarea } from "./components/ui/textarea";
+import { Checkbox } from "./components/ui/checkbox";
+import { Badge } from "./components/ui/badge";
+import { Notice } from "./components/Notice";
+import { ArrowLeft, ArrowRight, Layers3, LoaderCircle, Plus, Save } from "lucide-react";
 import type { DocumentType, Page } from "./types";
 
 const example = JSON.stringify({
@@ -51,36 +58,46 @@ export function Types() {
 
   return (
     <section className="config">
+      <Badge variant="secondary" className="mb-2"><Layers3 />Modelos configuráveis</Badge>
       <h2>Tipos de documento</h2>
       <p>JSON Schema define campos, tabelas e validações. Sem regras específicas no código.</p>
       <div className="actions">
-        <button onClick={() => {
+        <Button variant="outline" disabled={busy} onClick={() => {
           setSelected(null); setName(""); setDescription(""); setActive(true);
           setSchema(example); setError(""); setSaved("");
-        }}>Novo tipo</button>
+        }}><Plus />Novo tipo</Button>
         {types?.results.map((type) => (
-          <button key={type.id} onClick={() => {
+          <Button variant={selected === type.id ? "secondary" : "outline"}
+            disabled={busy} key={type.id} aria-pressed={selected === type.id} onClick={() => {
             setSelected(type.id); setName(type.nome); setDescription(type.descricao);
             setActive(type.ativo); setSchema(JSON.stringify(type.esquema, null, 2));
             setError(""); setSaved("");
-          }}>{type.nome}{!type.ativo && " (inativo)"}</button>
+          }}>{type.nome}{!type.ativo && " (inativo)"}</Button>
         ))}
-        <button disabled={!types?.previous} onClick={() => setPage(page - 1)}>Anterior</button>
-        <button disabled={!types?.next} onClick={() => setPage(page + 1)}>Próxima</button>
+        <Button variant="ghost" disabled={busy || !types?.previous}
+          onClick={() => setPage(page - 1)}><ArrowLeft />Anterior</Button>
+        <Button variant="ghost" disabled={busy || !types?.next}
+          onClick={() => setPage(page + 1)}>Próxima<ArrowRight /></Button>
       </div>
       <form onSubmit={(event) => void save(event)}>
-        <label>Nome<input required maxLength={120} value={name}
+        <fieldset disabled={busy}>
+        <legend>{selected ? "Editar tipo" : "Cadastrar tipo"}</legend>
+        <label>Nome<Input required maxLength={120} value={name}
           onChange={(event) => setName(event.target.value)} /></label>
-        <label>Descrição para detecção<textarea value={description}
+        <label>Descrição para detecção<Textarea value={description}
           onChange={(event) => setDescription(event.target.value)} /></label>
-        <label className="check"><input type="checkbox" checked={active}
-          onChange={(event) => setActive(event.target.checked)} />Ativo</label>
-        <label>Esquema JSON<textarea className="schema-editor" required value={schema}
+        <label className="check mb-4"><Checkbox checked={active}
+          onCheckedChange={(checked) => setActive(checked === true)} />Ativo</label>
+        <label>Esquema JSON<Textarea className="schema-editor bg-muted font-mono text-xs leading-relaxed" required value={schema}
           onChange={(event) => setSchema(event.target.value)} spellCheck={false} /></label>
-        <button className="primary" disabled={busy}>Salvar configuração</button>
+        <Button disabled={busy}>
+          {busy ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <Save />}
+          Salvar configuração
+        </Button>
+        </fieldset>
       </form>
-      {error && <p className="error" role="alert">{error}</p>}
-      {saved && <p className="notice" role="status">{saved}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
+      {saved && <Notice tone="success">{saved}</Notice>}
     </section>
   );
 }

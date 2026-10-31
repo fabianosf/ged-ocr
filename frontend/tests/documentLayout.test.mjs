@@ -87,9 +87,12 @@ test("review grid retains per-cell editing, human checks, row actions and maxIte
   assert.match(html, /aria-label="Quantidade · Linha 1"/);
   assert.match(html, /aria-label="Ativo · Linha 2"/);
   assert.match(html, /aria-label="Remover linha 2 de Itens"/);
-  assert.match(html, /disabled="">Adicionar linha manual/);
+  const addRow = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)
+    .find((button) => button.includes("Adicionar linha manual"));
+  assert.ok(addRow);
+  assert.match(addRow, /disabled=""/);
   assert.equal((html.match(/Revisado/g) ?? []).length, 5);
-  assert.equal((html.match(/checked=""/g) ?? []).length, 1);
+  assert.equal((html.match(/aria-checked="true"/g) ?? []).length, 1);
 });
 
 test("read-only review keeps photo location buttons but removes mutation actions", () => {

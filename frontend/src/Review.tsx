@@ -2,6 +2,12 @@ import { useState } from "react";
 import { api, message } from "./api";
 import { DocumentPhoto } from "./DocumentPhoto";
 import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { Checkbox } from "./components/ui/checkbox";
+import { NativeSelect } from "./components/ui/native-select";
+import { Badge } from "./components/ui/badge";
+import { Notice } from "./components/Notice";
+import { CheckCircle2, MapPin, Plus, Save, Trash2, UserCheck } from "lucide-react";
 import type { BBox, Document, Field, Result, Schema, Scalar } from "./types";
 
 function fieldType(schema: Schema): string {
@@ -28,15 +34,15 @@ function FieldEditor({ label, schema, field, disabled, onChange, onFocus, select
         {!compact && <strong>{label}</strong>}
         {schema.description && <small>{schema.description}</small>}
         {type === "boolean" ? (
-          <select aria-label={label} value={String(field.valor)} disabled={disabled}
+          <NativeSelect aria-label={label} value={String(field.valor)} disabled={disabled}
             onFocus={() => onFocus(field.bbox)}
             onChange={(event) => update(event.target.value === "null" ? null : event.target.value === "true")}>
             <option value="null">Ilegível / ausente</option>
             <option value="true">Sim</option>
             <option value="false">Não</option>
-          </select>
+          </NativeSelect>
         ) : schema.enum ? (
-          <select aria-label={label} value={String(schema.enum.indexOf(field.valor))}
+          <NativeSelect aria-label={label} value={String(schema.enum.indexOf(field.valor))}
             disabled={disabled} onFocus={() => onFocus(field.bbox)}
             onChange={(event) => {
               const option = schema.enum?.[Number(event.target.value)];
@@ -46,9 +52,9 @@ function FieldEditor({ label, schema, field, disabled, onChange, onFocus, select
             {schema.enum.map((value, index) => value === null ? null : (
               <option key={index} value={index}>{String(value)}</option>
             ))}
-          </select>
+          </NativeSelect>
         ) : (
-          <input aria-label={label} type={type === "string" ? "text" : "number"}
+          <Input aria-label={label} type={type === "string" ? "text" : "number"}
             step={type === "integer" ? "1" : "any"} disabled={disabled || field.valor === null}
             value={field.valor === null ? "" : String(field.valor)}
             onFocus={() => onFocus(field.bbox)}
@@ -57,21 +63,21 @@ function FieldEditor({ label, schema, field, disabled, onChange, onFocus, select
         )}
       </label>
       <div className="field-meta">
-        <button type="button" disabled={!field.bbox}
+        <Button variant="ghost" size="sm" type="button" disabled={!field.bbox}
           aria-label={`Localizar na foto: ${label}`}
           aria-pressed={!!field.bbox && selected === field.bbox}
-          onClick={() => onFocus(field.bbox)}>Localizar na foto</button>
+          onClick={() => onFocus(field.bbox)}><MapPin />Localizar na foto</Button>
         {!field.bbox && <small>Sem localização na foto.</small>}
         <label className="check">
-          <input type="checkbox" checked={field.valor === null} disabled={disabled}
-            onChange={(event) => update(event.target.checked ? null : (
+          <Checkbox checked={field.valor === null} disabled={disabled}
+            onCheckedChange={(checked) => update(checked === true ? null : (
               type === "string" ? "" : type === "boolean" ? false : 0
             ))} />
           Ilegível / ausente
         </label>
         <label className="check">
-          <input type="checkbox" checked={field.revisado} disabled={disabled}
-            onChange={(event) => onChange({ ...field, revisado: event.target.checked })} />
+          <Checkbox checked={field.revisado} disabled={disabled}
+            onCheckedChange={(checked) => onChange({ ...field, revisado: checked === true })} />
           Revisado
         </label>
         <small>Confiança OCR/LLM: {Math.round(field.confianca * 100)}%
@@ -132,20 +138,20 @@ function Fields({ schema, result, disabled, onChange, onFocus, onRowsChanged, se
                         })} />}
                     </td>;
                   })}
-                  {!disabled && <td><button type="button"
+                  {!disabled && <td><Button variant="ghost" className="text-destructive" size="sm" type="button"
                     aria-label={`Remover linha ${index + 1} de ${label}`} onClick={() => {
                       onChange({ ...result, [key]: field.filter((_, rowIndex) => rowIndex !== index) });
                       onRowsChanged?.(key, index);
-                    }}>Remover linha</button></td>}
+                    }}><Trash2 />Remover linha</Button></td>}
                 </tr>
               ))}</tbody>
             </table>
           </div>}
-          {!disabled && items && <button type="button"
+          {!disabled && items && <Button variant="outline" type="button"
             disabled={field.length >= (child.maxItems ?? 200)} onClick={() => {
               onChange({ ...result, [key]: [...field, emptyRow(items)] });
               onRowsChanged?.(key, null);
-            }}>Adicionar linha manual</button>}
+            }}><Plus />Adicionar linha manual</Button>}
         </fieldset>
       );
     }
@@ -192,28 +198,29 @@ export function Review({ document, onUpdated, onDirtyChange }: {
   }
 
   return (
-    <section>
+    <section className="workspace-panel">
       <header className="review-header">
         <div>
+          <Badge variant="secondary" className="mb-2"><UserCheck />Conferência de valores</Badge>
           <h2>{document.tipo_nome ?? "Documento"}</h2>
           <small>Job: {document.id} · {document.status}</small>
         </div>
         {editable && <div className="actions">
           <Button variant="outline" disabled={busy || !dirty}
-            onClick={() => void perform("revisao")}>Salvar revisão</Button>
+            onClick={() => void perform("revisao")}><Save />Salvar revisão</Button>
           <Button disabled={busy || dirty}
-            onClick={() => void perform("aprovar")}>Aprovar documento</Button>
+            onClick={() => void perform("aprovar")}><CheckCircle2 />Aprovar documento</Button>
         </div>}
       </header>
-      {error && <p className="error" role="alert">{error}</p>}
-      {dirty && <p className="notice">Alterações locais: salve antes de aprovar ou trocar de documento.</p>}
+      {error && <Notice tone="error">{error}</Notice>}
+      {dirty && <Notice tone="warning">Alterações locais: salve antes de aprovar ou trocar de documento.</Notice>}
       {document.erros_validacao.length > 0 && (
-        <div className="notice" role="status">
+        <Notice tone="warning">
           <strong>Validações pendentes (recalculadas ao salvar)</strong>
           <ul>{document.erros_validacao.map((item, index) => (
             <li key={index}>{item.campo || "Documento"}: {item.regra} · {item.mensagem}</li>
           ))}</ul>
-        </div>
+        </Notice>
       )}
       <p className="muted">Clique em um campo ou em “Localizar na foto” para conferir sua posição.
         A confiança é uma estimativa, não uma garantia.</p>
@@ -234,7 +241,7 @@ export function Review({ document, onUpdated, onDirtyChange }: {
         </div>
       </div>
       {document.status === "aprovado" && (
-        <div className={document.ged_status === "erro" ? "error" : "notice"}>
+        <Notice tone={document.ged_status === "erro" ? "error" : document.ged_status === "enviado" ? "success" : "info"}>
           <strong>{document.ged_status === "enviado" ? "Documento enviado ao GED"
             : document.ged_status === "erro" ? "O envio ao GED precisa de atenção"
             : document.ged_status === "nao_configurado" ? "Documento aprovado e salvo"
@@ -248,7 +255,7 @@ export function Review({ document, onUpdated, onDirtyChange }: {
             <p>Referência: {document.correlation_id}</p>
             <p>Código: {document.ged_erro_codigo}</p>
           </details>}
-        </div>
+        </Notice>
       )}
     </section>
   );

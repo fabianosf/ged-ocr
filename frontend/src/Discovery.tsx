@@ -2,6 +2,14 @@ import { useState } from "react";
 import { api, message } from "./api";
 import { DocumentPhoto } from "./DocumentPhoto";
 import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { Textarea } from "./components/ui/textarea";
+import { NativeSelect } from "./components/ui/native-select";
+import { Checkbox } from "./components/ui/checkbox";
+import { Badge } from "./components/ui/badge";
+import { Notice } from "./components/Notice";
+import { useConfirmation } from "./components/useConfirmation";
+import { FilePlus2, Plus, RotateCw, Save, Trash2 } from "lucide-react";
 import { suggestedField, suggestedRows } from "./discoverySuggestions";
 import type {
   BBox, Document, Field, Proposal, ProposedColumn, ProposedField, ProposalType,
@@ -30,22 +38,23 @@ function ColumnEditor({ column, disabled, onChange, onRemove }: {
   return (
     <div className="proposal-column">
       <label>Chave (snake_case)
-        <input value={column.chave} maxLength={100} disabled={disabled}
+        <Input value={column.chave} maxLength={100} disabled={disabled}
           onChange={(event) => onChange({ ...column, chave: event.target.value })} />
       </label>
       <label>Rótulo visível
-        <input value={column.titulo} maxLength={120} disabled={disabled}
+        <Input value={column.titulo} maxLength={120} disabled={disabled}
           onChange={(event) => onChange({ ...column, titulo: event.target.value })} />
       </label>
       <label>Tipo de dado
-        <select value={column.tipo} disabled={disabled} onChange={(event) => {
+        <NativeSelect value={column.tipo} disabled={disabled} onChange={(event) => {
           const type = dataTypes.find((value) => value === event.target.value);
           if (type) onChange({ ...column, tipo: type });
         }}>
           {dataTypes.map((type) => <option key={type} value={type}>{type}</option>)}
-        </select>
+        </NativeSelect>
       </label>
-      <button type="button" disabled={disabled} onClick={onRemove}>Remover</button>
+      <Button variant="ghost" className="text-destructive" type="button" disabled={disabled}
+        onClick={onRemove}><Trash2 />Remover</Button>
     </div>
   );
 }
@@ -63,12 +72,13 @@ function Suggestion({ field, onFocus, compact = false, selected }: {
       field.bbox && selected === field.bbox ? "selected-field" : ""
     }`}>
       {!compact && <strong>Valor identificado na foto</strong>}
-      <button className="suggested-value" type="button" disabled={!field.bbox}
+      <Button variant="outline" className="suggested-value h-auto min-h-9 justify-start whitespace-normal"
+        type="button" disabled={!field.bbox}
         aria-label={`Localizar na foto: ${field.valor === null ? "Ilegível / ausente" : String(field.valor)}`}
         aria-pressed={!!field.bbox && selected === field.bbox}
         onFocus={() => onFocus(field.bbox)} onClick={() => onFocus(field.bbox)}>
         {field.valor === null ? "Ilegível / ausente (null)" : String(field.valor)}
-      </button>
+      </Button>
       <small>Confiança: {Math.round(field.confianca * 100)}% · Não revisado
         {field.flags.length > 0 && ` · ${field.flags.join(", ")}`}</small>
       {!field.bbox && <small>Sem localização na foto.</small>}
@@ -91,6 +101,7 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [bbox, setBbox] = useState<BBox>(null);
+  const confirmation = useConfirmation();
 
   function update(value: Proposal) {
     setProposal(value); setBbox(null); setDirty(true); onDirtyChange(true);
@@ -111,7 +122,7 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
   }
 
   async function refresh() {
-    if (dirty && !window.confirm("Descartar os ajustes locais e atualizar o job?")) return;
+    if (dirty && !await confirmation.confirm("Os ajustes locais serão descartados ao atualizar o documento.")) return;
     setBusy(true); setError("");
     try {
       const updated = await api<Document>(`documentos/${document.id}/`);
@@ -130,39 +141,41 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
 
   const rootKeys = [...proposal.campos, ...proposal.tabelas].map((item) => item.chave);
   return (
-    <section>
+    <section className="workspace-panel">
       <header className="review-header">
-        <div><h2>Documento novo</h2><small>Job: {document.id} · versão {document.versao}</small></div>
+        <div><Badge variant="secondary" className="mb-2"><FilePlus2 />Descoberta de documento</Badge>
+          <h2>Documento novo</h2><small>Job: {document.id} · versão {document.versao}</small></div>
         <div className="actions">
           <Button variant="outline" className="h-auto whitespace-normal" disabled={busy}
             onClick={() => void perform("definir-tipo")}>
-            Reprocessar com ajustes
+            <RotateCw />Reprocessar com ajustes
           </Button>
           <Button className="h-auto whitespace-normal" disabled={busy || dirty || !document.pode_aprovar_tipo}
             onClick={() => void perform("aprovar-tipo")}>
-            Salvar como novo tipo e continuar revisão
+            <Save />Salvar como novo tipo e continuar revisão
           </Button>
         </div>
       </header>
-      <p className="notice">Confira a estrutura na foto. Use somente rótulos visíveis, inclusive
+      <Notice>Confira a estrutura na foto. Use somente rótulos visíveis, inclusive
         campos vazios. Não cadastre valores pessoais na descrição de reconhecimento.
-        Salvar o tipo não aprova os valores: a revisão humana continuará obrigatória.</p>
-      {!document.pode_aprovar_tipo && <p className="notice">
+        Salvar o tipo não aprova os valores: a revisão humana continuará obrigatória.</Notice>
+      {!document.pode_aprovar_tipo && <Notice tone="warning">
         Você pode ajustar a proposta. Para criar o tipo, solicite aprovação à equipe
         ou a permissão de adicionar tipos de documento.
-      </p>}
-      {dirty && <p className="notice">Ajustes não processados. Reprocesse antes de salvar o tipo.</p>}
-      {error && <div className="error" role="alert">
-        <p>{error}</p><button disabled={busy} onClick={() => void refresh()}>Atualizar job</button>
-      </div>}
+      </Notice>}
+      {dirty && <Notice tone="warning">Ajustes não processados. Reprocesse antes de salvar o tipo.</Notice>}
+      {error && <Notice tone="error">
+        <p>{error}</p><Button variant="outline" disabled={busy}
+          onClick={() => void refresh()}><RotateCw />Atualizar job</Button>
+      </Notice>}
       <div className="review-grid">
         <DocumentPhoto jobId={document.id} bbox={bbox} />
         <div>
           <fieldset disabled={busy}>
             <legend>Proposta de estrutura</legend>
-            <label>Nome sugerido<input value={proposal.nome_sugerido} maxLength={120}
+            <label>Nome sugerido<Input value={proposal.nome_sugerido} maxLength={120}
               onChange={(event) => update({ ...proposal, nome_sugerido: event.target.value })} /></label>
-            <label>Descrição de reconhecimento<textarea className="recognition-description"
+            <label>Descrição de reconhecimento<Textarea className="recognition-description"
               value={proposal.descricao_reconhecimento}
               maxLength={2000} onChange={(event) => update({
                 ...proposal, descricao_reconhecimento: event.target.value,
@@ -188,20 +201,20 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
                   onRemove={() => update({
                     ...proposal, campos: proposal.campos.filter((_, itemIndex) => itemIndex !== index),
                   })} />
-                <label className="check"><input type="checkbox" checked={field.obrigatorio}
-                  onChange={(event) => {
-                    const updated: ProposedField = { ...field, obrigatorio: event.target.checked };
+                <label className="check"><Checkbox checked={field.obrigatorio}
+                  onCheckedChange={(checked) => {
+                    const updated: ProposedField = { ...field, obrigatorio: checked === true };
                     update({ ...proposal, campos: proposal.campos.map((old, itemIndex) =>
                       itemIndex === index ? updated : old) });
                   }} />Obrigatório (impede aprovação se null)</label>
                 </details>
               </fieldset>
             ))}
-            <button type="button" disabled={rootKeys.length >= 100} onClick={() => update({
+            <Button variant="outline" type="button" disabled={rootKeys.length >= 100} onClick={() => update({
               ...proposal, campos: [...proposal.campos, {
                 chave: newKey(rootKeys, "campo"), titulo: "", tipo: "texto", obrigatorio: false,
               }],
-            })}>Adicionar campo visível</button>
+            })}><Plus />Adicionar campo visível</Button>
             <h3>Tabelas · {proposal.tabelas.length}</h3>
             {proposal.tabelas.map((table, tableIndex) => {
               const rows = processed
@@ -213,10 +226,10 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
                 <legend>{table.titulo || `Tabela ${tableIndex + 1}`}</legend>
                 <details className="field-configuration">
                   <summary>Ajustar nome da tabela</summary>
-                  <label>Chave da tabela<input value={table.chave} maxLength={100}
+                  <label>Chave da tabela<Input value={table.chave} maxLength={100}
                     onChange={(event) => update({ ...proposal, tabelas: proposal.tabelas.map((old, index) =>
                       index === tableIndex ? { ...old, chave: event.target.value } : old) })} /></label>
-                  <label>Rótulo da tabela<input value={table.titulo} maxLength={120}
+                  <label>Rótulo da tabela<Input value={table.titulo} maxLength={120}
                     onChange={(event) => update({ ...proposal, tabelas: proposal.tabelas.map((old, index) =>
                       index === tableIndex ? { ...old, titulo: event.target.value } : old) })} /></label>
                 </details>
@@ -264,29 +277,30 @@ export function Discovery({ document, onUpdated, onDirtyChange }: {
                   Reprocesse os ajustes para extrair as linhas.</p>}
                 {rows?.length === 0 && <p className="muted">Nenhuma linha identificada nesta tabela.</p>}
                 <div className="actions">
-                  <button type="button" disabled={table.colunas.length >= 100} onClick={() => update({
+                  <Button variant="outline" type="button" disabled={table.colunas.length >= 100} onClick={() => update({
                     ...proposal, tabelas: proposal.tabelas.map((old, index) => index === tableIndex
                       ? { ...old, colunas: [...old.colunas, {
                         chave: newKey(old.colunas.map((item) => item.chave), "coluna"),
                         titulo: "", tipo: "texto",
                       }] } : old),
-                  })}>Adicionar coluna visível</button>
-                  <button type="button" onClick={() => update({
+                  })}><Plus />Adicionar coluna visível</Button>
+                  <Button variant="ghost" className="text-destructive" type="button" onClick={() => update({
                     ...proposal, tabelas: proposal.tabelas.filter((_, index) => index !== tableIndex),
-                  })}>Remover tabela</button>
+                  })}><Trash2 />Remover tabela</Button>
                 </div>
               </fieldset>
               );
             })}
-            <button type="button" disabled={rootKeys.length >= 100} onClick={() => update({
+            <Button variant="outline" type="button" disabled={rootKeys.length >= 100} onClick={() => update({
               ...proposal, tabelas: [...proposal.tabelas, {
                 chave: newKey(rootKeys, "tabela"), titulo: "",
                 colunas: [{ chave: "coluna_1", titulo: "", tipo: "texto" }],
               }],
-            })}>Adicionar tabela visível</button>
+            })}><Plus />Adicionar tabela visível</Button>
           </fieldset>
         </div>
       </div>
+      {confirmation.dialog}
     </section>
   );
 }
