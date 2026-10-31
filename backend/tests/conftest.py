@@ -20,6 +20,8 @@ def field(value="DOC-01", confidence=0.95, reviewed=False):
 @pytest.fixture(autouse=True)
 def media(settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path / "media"
+    settings.LLM_API_KEY = "synthetic-test-key"
+    settings.LLM_MODEL = "synthetic-model"
 
 
 @pytest.fixture

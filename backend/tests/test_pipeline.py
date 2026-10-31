@@ -62,11 +62,22 @@ def test_llm_invalid_json(content, settings):
     {"tipo_id": None, "confianca": 0.99},
     {"tipo_id": 42, "confianca": 0.99},
     {"tipo_id": 1, "confianca": 0.69},
-    {"tipo_id": True, "confianca": 0.99},
 ])
 def test_unknown_or_uncertain_type(answer):
     with patch("documents.pipeline.ask_llm", return_value=answer):
-        with pytest.raises(PipelineError, match="tipo_nao_identificado"):
+        assert detect_type(b"synthetic", [], [{"id": 1}]) is None
+
+
+@pytest.mark.parametrize("answer", [
+    {"tipo_id": True, "confianca": 0.99},
+    {"tipo_id": 1, "confianca": float("nan")},
+    {"tipo_id": 1, "confianca": 1.1},
+    {"tipo_id": "1", "confianca": 0.99},
+    {"tipo_id": None},
+])
+def test_malformed_classification_is_not_discovery(answer):
+    with patch("documents.pipeline.ask_llm", return_value=answer):
+        with pytest.raises(PipelineError, match="classificacao_resposta_invalida"):
             detect_type(b"synthetic", [], [{"id": 1}])
 
 

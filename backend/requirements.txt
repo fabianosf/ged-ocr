@@ -6,3 +6,4 @@ jsonschema>=4.23,<5
 requests>=2.32,<3
 Pillow>=11,<12
 gunicorn>=23,<24
+pydantic>=2.10,<3

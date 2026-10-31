@@ -88,6 +88,9 @@ OCR_RECOGNITION_MODEL = os.getenv("OCR_RECOGNITION_MODEL", "latin_PP-OCRv5_mobil
 MIN_CONFIDENCE = float(os.getenv("MIN_CONFIDENCE", "0.7"))
 if not 0 <= MIN_CONFIDENCE <= 1:
     raise ValueError("MIN_CONFIDENCE deve estar entre 0 e 1.")
+TYPE_MIN_CONFIDENCE = float(os.getenv("TYPE_MIN_CONFIDENCE", "0.7"))
+if not 0 <= TYPE_MIN_CONFIDENCE <= 1:
+    raise ValueError("TYPE_MIN_CONFIDENCE deve estar entre 0 e 1.")
 GED_URL = os.getenv("GED_URL", "")
 GED_TOKEN = os.getenv("GED_TOKEN", "")
 GED_TIMEOUT = int(os.getenv("GED_TIMEOUT", "30"))

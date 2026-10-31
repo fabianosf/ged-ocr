@@ -1,5 +1,6 @@
 import base64
 import json
+import math
 from io import BytesIO
 
 import requests
@@ -102,18 +103,20 @@ def ask_llm(image: bytes, prompt: str) -> JSON:
         raise PipelineError("llm_resposta_invalida") from exc
 
 
-def detect_type(image: bytes, ocr: list[JSON], types: list[JSON]) -> int:
+def detect_type(image: bytes, ocr: list[JSON], types: list[JSON]) -> int | None:
     answer = ask_llm(image, (
         'Identifique o tipo. Retorne {"tipo_id": inteiro ou null, "confianca": 0..1}. '
         "Use null se não corresponder com segurança a um tipo cadastrado.\n"
         + json.dumps({"tipos": types, "ocr": ocr}, ensure_ascii=False)
     ))
     type_id, confidence = answer.get("tipo_id"), answer.get("confianca")
-    if (isinstance(type_id, bool) or not isinstance(type_id, int)
-            or type_id not in {item["id"] for item in types}
+    if (set(answer) != {"tipo_id", "confianca"}
+            or type_id is not None and (isinstance(type_id, bool) or not isinstance(type_id, int))
             or isinstance(confidence, bool) or not isinstance(confidence, (int, float))
-            or not settings.MIN_CONFIDENCE <= confidence <= 1):
-        raise PipelineError("tipo_nao_identificado")
+            or not math.isfinite(confidence) or not 0 <= confidence <= 1):
+        raise PipelineError("classificacao_resposta_invalida")
+    if type_id not in {item["id"] for item in types} or confidence < settings.TYPE_MIN_CONFIDENCE:
+        return None
     return type_id
 
 

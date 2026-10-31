@@ -3,7 +3,7 @@ import warnings
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import FileResponse, JsonResponse
 from django.middleware.csrf import get_token
 from django.utils import timezone
@@ -13,13 +13,21 @@ from kombu.exceptions import OperationalError
 from PIL import Image, UnidentifiedImageError
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from .models import Documento, TipoDocumento
 from .schema import InvalidDocument, leaves, merge_review, validation_errors
-from .serializers import DocumentoSerializer, ReviewSerializer, TipoSerializer, VersionSerializer
+from .serializers import (
+    DefineTypeSerializer,
+    DocumentoSerializer,
+    ReviewSerializer,
+    TipoSerializer,
+    VersionSerializer,
+    can_approve_type,
+)
+from .services.schema_builder import Proposal, build_schema
 from .tasks import process_document, sync_ged
 
 logger = logging.getLogger("documents")
@@ -51,6 +59,10 @@ def session_view(request):
     return JsonResponse({
         "autenticado": request.user.is_authenticated,
         "admin": request.user.is_staff,
+        "pode_criar_tipo": (
+            request.user.is_authenticated and can_approve_type(request.user)
+        ),
+        "llm_configurado": bool(settings.LLM_API_KEY and settings.LLM_MODEL),
         "csrfToken": get_token(request),
     })
 
@@ -141,6 +153,61 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         response["Cache-Control"] = "private, no-store"
         response["X-Content-Type-Options"] = "nosniff"
         return response
+
+    @action(detail=True, methods=["post"], url_path="definir-tipo")
+    def definir_tipo(self, request, pk=None):
+        serializer = DefineTypeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            if (document.status != Documento.Status.REVISAO_TIPO
+                    or document.versao != serializer.validated_data["versao"]):
+                raise Conflict()
+            document.proposta = serializer.validated_data["proposta"]
+            document.esquema = build_schema(Proposal.model_validate(document.proposta))
+            document.status = Documento.Status.PENDENTE
+            document.somente_extracao = True
+            document.resultado = {}
+            document.erros_validacao = []
+            document.erro_codigo = ""
+            document.versao += 1
+            document.save()
+            transaction.on_commit(lambda: enqueue(document))
+        return Response(self.get_serializer(document).data, status=202)
+
+    @action(detail=True, methods=["post"], url_path="aprovar-tipo")
+    def aprovar_tipo(self, request, pk=None):
+        if not can_approve_type(request.user):
+            raise PermissionDenied("Somente equipe ou usuário autorizado pode criar tipos.")
+        serializer = VersionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            if (document.status != Documento.Status.REVISAO_TIPO
+                    or document.versao != serializer.validated_data["versao"]
+                    or document.extracao_versao != document.versao or not document.resultado):
+                raise Conflict()
+            proposal = Proposal.model_validate(document.proposta)
+            schema = build_schema(proposal)
+            if schema != document.esquema:
+                raise Conflict()
+            try:
+                with transaction.atomic():
+                    document_type = TipoDocumento.objects.create(
+                        nome=proposal.nome_sugerido,
+                        descricao=proposal.descricao_reconhecimento, esquema=schema,
+                    )
+            except IntegrityError as exc:
+                if not TipoDocumento.objects.filter(nome=proposal.nome_sugerido).exists():
+                    raise
+                raise ValidationError("Já existe um tipo com esse nome. Renomeie a proposta.") from exc
+            document.tipo = document_type
+            document.somente_extracao = False
+            document.status = Documento.Status.REVISAO
+            document.versao += 1
+            document.save()
+        logger.info("type_approved correlation_id=%s", document.correlation_id)
+        return Response(self.get_serializer(document).data)
 
     @action(detail=True, methods=["patch"])
     def revisao(self, request, pk=None):

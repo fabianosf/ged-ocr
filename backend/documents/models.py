@@ -33,6 +33,7 @@ class Documento(models.Model):
         PENDENTE = "pendente", "Pendente"
         PROCESSANDO = "processando", "Processando"
         REVISAO = "revisao", "Em revisão"
+        REVISAO_TIPO = "revisao_tipo", "Documento novo"
         APROVADO = "aprovado", "Aprovado"
         ERRO = "erro", "Erro"
 
@@ -49,6 +50,12 @@ class Documento(models.Model):
     foto = models.ImageField(upload_to=photo_path)
     tipo = models.ForeignKey(TipoDocumento, null=True, blank=True, on_delete=models.PROTECT)
     esquema = models.JSONField(default=dict)
+    proposta = models.JSONField(default=dict)
+    proposta_original = models.JSONField(default=dict, editable=False)
+    esquema_provisorio = models.JSONField(default=dict, editable=False)
+    ocr = models.JSONField(default=list, editable=False)
+    somente_extracao = models.BooleanField(default=False, editable=False)
+    extracao_versao = models.PositiveIntegerField(default=0, editable=False)
     extraido = models.JSONField(default=dict)
     resultado = models.JSONField(default=dict)
     erros_validacao = models.JSONField(default=list)

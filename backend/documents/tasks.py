@@ -1,7 +1,9 @@
 import logging
+from copy import deepcopy
 
 from billiard.exceptions import SoftTimeLimitExceeded
 from celery import Task, shared_task
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -9,6 +11,8 @@ from .ged import send_document
 from .models import Documento, TipoDocumento
 from .pipeline import PipelineError, detect_type, extract, prepare_image, run_ocr
 from .schema import InvalidDocument, check_schema, validation_errors
+from .services.discovery import discover
+from .services.schema_builder import build_schema
 
 logger = logging.getLogger("documents")
 
@@ -43,22 +47,44 @@ def process_document(job_id: str, version: int) -> None:
         types = list(TipoDocumento.objects.filter(ativo=True).values(
             "id", "nome", "descricao", "esquema",
         ))
-        if not types:
-            raise PipelineError("tipos_nao_configurados")
+        if not settings.LLM_API_KEY or not settings.LLM_MODEL:
+            raise PipelineError("llm_nao_configurado")
         image = prepare_image(document.foto.path)
-        ocr = run_ocr(image)
-        type_id = detect_type(image, ocr, [
-            {key: item[key] for key in ("id", "nome", "descricao")} for item in types
-        ])
-        schema = next(item["esquema"] for item in types if item["id"] == type_id)
+        if document.somente_extracao:
+            ocr, type_id, schema = document.ocr, None, document.esquema
+        else:
+            ocr = run_ocr(image)
+            type_id = detect_type(image, ocr, [
+                {key: item[key] for key in ("id", "nome", "descricao")} for item in types
+            ]) if types else None
+            if type_id is None:
+                proposal = discover(image, ocr)
+                schema = build_schema(proposal)
+                # Save once before extraction, so its failure cannot lose the original proposal.
+                with transaction.atomic():
+                    current = Documento.objects.select_for_update().get(pk=job_id)
+                    if current.versao != version or current.status != Documento.Status.PROCESSANDO:
+                        return
+                    current.proposta = proposal.model_dump()
+                    current.proposta_original = deepcopy(current.proposta)
+                    current.esquema = schema
+                    current.esquema_provisorio = deepcopy(schema)
+                    current.ocr = ocr
+                    current.somente_extracao = True
+                    current.save()
+                    document = current
+            else:
+                schema = next(item["esquema"] for item in types if item["id"] == type_id)
         check_schema(schema)
         result = extract(image, ocr, schema)
+        changes = {"extraido": result} if not document.extraido else {}
         Documento.objects.filter(
             pk=job_id, versao=version, status=Documento.Status.PROCESSANDO,
         ).update(
-            tipo_id=type_id, esquema=schema, extraido=result, resultado=result,
+            **changes, tipo_id=type_id, esquema=schema, resultado=result, extracao_versao=version,
             erros_validacao=validation_errors(result, schema),
-            status=Documento.Status.REVISAO, atualizado_em=timezone.now(),
+            status=Documento.Status.REVISAO_TIPO if type_id is None else Documento.Status.REVISAO,
+            atualizado_em=timezone.now(), erro_codigo="",
         )
         logger.info("process_completed correlation_id=%s", document.correlation_id)
     except (PipelineError, InvalidDocument, SoftTimeLimitExceeded, OSError) as exc:
