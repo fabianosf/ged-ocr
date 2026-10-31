@@ -1,9 +1,13 @@
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from threading import Barrier
 from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.models import Permission
+from django.db import close_old_connections, connection
 from pydantic import ValidationError
+from rest_framework.test import APIClient
 
 from documents.models import Documento, TipoDocumento
 from documents.pipeline import PipelineError, detect_type
@@ -14,6 +18,7 @@ from documents.tasks import process_document
 
 from .conftest import field
 from .test_api import url
+from .test_pipeline import response_for
 
 
 @pytest.fixture
@@ -368,3 +373,113 @@ def test_stale_extraction_cannot_approve_type(client, discovery_job, user):
     assert client.post(url(discovery_job, "aprovar-tipo"), {
         "versao": 1,
     }, format="json").status_code == 409
+
+
+@pytest.mark.parametrize("registered, calls", [(False, 2), (True, 3)])
+def test_full_llm_contract_discovery_extraction(
+    document, proposal, suggested_values, registered, calls,
+):
+    document.tipo = None
+    document.status = Documento.Status.PENDENTE
+    document.resultado = {}
+    document.extraido = {}
+    document.save()
+    if not registered:
+        TipoDocumento.objects.all().delete()
+    responses = [response_for(proposal), response_for(suggested_values)]
+    if registered:
+        responses.insert(0, response_for({"tipo_id": None, "confianca": 0.3}))
+    with (
+        patch("documents.tasks.prepare_image", return_value=b"synthetic-image"),
+        patch("documents.tasks.run_ocr", return_value=[{
+            "texto": "Código Data Itens Quantidade Total Pago",
+            "confianca": 0.95, "bbox": [0.1, 0.1, 0.9, 0.9],
+        }]),
+        patch("documents.pipeline.requests.post", side_effect=responses) as llm,
+    ):
+        process_document(str(document.id), 1)
+    document.refresh_from_db()
+    assert document.status == Documento.Status.REVISAO_TIPO
+    assert document.resultado["data"]["valor"] is None
+    assert "ilegivel" in document.resultado["data"]["flags"]
+    assert "baixa_confianca" in document.resultado["itens"][0]["total"]["flags"]
+    assert llm.call_count == calls
+    for call in llm.call_args_list:
+        content = call.kwargs["json"]["messages"][1]["content"]
+        assert content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    assert "campos vazios" in llm.call_args_list[-2].kwargs["json"]["messages"][1]["content"][0]["text"]
+
+
+def test_invalid_proposal_does_not_reach_extraction(document, proposal):
+    document.status = Documento.Status.PENDENTE
+    document.save()
+    proposal["campos"][0]["chave"] = "Not snake case"
+    with (
+        patch("documents.tasks.prepare_image", return_value=b"image"),
+        patch("documents.tasks.run_ocr", return_value=[]),
+        patch("documents.tasks.detect_type", return_value=None),
+        patch("documents.services.discovery.ask_llm", return_value=proposal),
+        patch("documents.tasks.extract") as extraction,
+    ):
+        process_document(str(document.id), 1)
+    extraction.assert_not_called()
+    document.refresh_from_db()
+    assert document.status == Documento.Status.ERRO
+    assert document.erro_codigo == "descoberta_proposta_invalida"
+    assert document.proposta_original == {}
+
+
+def test_actions_do_not_expose_other_users_jobs(client, discovery_job, user, proposal):
+    from django.contrib.auth import get_user_model
+
+    discovery_job.usuario = get_user_model().objects.create_user(username="another-owner")
+    discovery_job.save()
+    assert client.post(url(discovery_job, "definir-tipo"), {
+        "versao": 1, "proposta": proposal,
+    }, format="json").status_code == 404
+    user.user_permissions.add(Permission.objects.get(codename="add_tipodocumento"))
+    assert client.post(url(discovery_job, "aprovar-tipo"), {
+        "versao": 1,
+    }, format="json").status_code == 404
+
+
+def test_llm_failure_does_not_trigger_discovery(document):
+    document.status = Documento.Status.PENDENTE
+    document.save()
+    with (
+        patch("documents.tasks.prepare_image", return_value=b"image"),
+        patch("documents.tasks.run_ocr", return_value=[]),
+        patch("documents.tasks.detect_type", side_effect=PipelineError("llm_indisponivel")),
+        patch("documents.tasks.discover") as discovery,
+    ):
+        process_document(str(document.id), 1)
+    discovery.assert_not_called()
+    document.refresh_from_db()
+    assert document.erro_codigo == "llm_indisponivel"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_type_approval_creates_one_type(discovery_job, user):
+    if connection.vendor != "postgresql":
+        pytest.skip("Concorrência real exige PostgreSQL.")
+    user.is_staff = True
+    user.save()
+    barrier = Barrier(2)
+    initial_count = TipoDocumento.objects.count()
+
+    def approve():
+        close_old_connections()
+        client = APIClient()
+        client.force_authenticate(user=user)
+        barrier.wait(timeout=10)
+        try:
+            return client.post(url(discovery_job, "aprovar-tipo"), {
+                "versao": 1,
+            }, format="json").status_code
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda _: approve(), range(2)))
+    assert sorted(responses) == [200, 409]
+    assert TipoDocumento.objects.count() == initial_count + 1
