@@ -134,6 +134,21 @@ Linhas novas têm confiança 0 e bbox null; a extração original permanece imut
 
 ## API
 
+### Excluir tentativas antigas
+
+Cada cartão da lista tem **Excluir**, com confirmação de exclusão definitiva.
+Nenhum documento é apagado automaticamente. A exclusão remove o registro do job
+(incluindo OCR, valores e propostas) e sua foto do armazenamento ativo. Não remove
+o TipoDocumento cadastrado, outras tentativas, cópias de backup nem documentos
+já enviados ao GED.
+
+`DELETE /api/documentos/{job_id}/` recebe `{"versao": 1}` e retorna **204**.
+Somente o proprietário ou a equipe pode excluir. Versão desatualizada, job na fila/
+processando ou envio GED pendente/em andamento retorna **409**, sem apagar a foto.
+Falha ao remover a foto retorna erro explícito e mantém o registro para nova tentativa.
+Mensagens gerais podem ser fechadas por **Fechar mensagem**; isso não apaga jobs.
+Tarefas antigas reenviadas pela fila ignoram registros já excluídos.
+
 Autenticação por sessão e proteção CSRF, mesma origem via proxy.
 `GET /api/session/` entrega `csrfToken`; envie `X-CSRFToken` nas mutações.
 Login: `POST /api/session/`, formulário `username`/`password`; logout: `DELETE`.

@@ -37,6 +37,7 @@ export interface Document {
   pode_aprovar_tipo: boolean;
   pode_reprocessar: boolean;
   pode_reenviar_ged: boolean;
+  pode_excluir: boolean;
   versao: number;
   criado_em: string;
   atualizado_em: string;

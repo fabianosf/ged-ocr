@@ -35,3 +35,14 @@ test("successful response is unchanged", async (t) => {
   }));
   assert.deepEqual(await api("test/"), { job_id: "job" });
 });
+
+test("deletion accepts 204 without trying to parse an empty JSON body", async (t) => {
+  t.mock.method(globalThis, "fetch", async (_, options) => {
+    assert.equal(options.method, "DELETE");
+    assert.deepEqual(JSON.parse(options.body), { versao: 3 });
+    return new Response(null, { status: 204 });
+  });
+  assert.equal(await api("documentos/job/", {
+    method: "DELETE", body: JSON.stringify({ versao: 3 }),
+  }), undefined);
+});

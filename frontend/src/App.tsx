@@ -26,6 +26,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [config, setConfig] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [listVersion, setListVersion] = useState(0);
   const photoInput = useRef<HTMLInputElement>(null);
   const dirty = useRef(false);
 
@@ -57,7 +59,7 @@ export default function App() {
   const selectedId = selected?.id;
   const authenticated = session?.autenticado;
   useEffect(() => {
-    if (!authenticated) return;
+    if (!authenticated || deletingId) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
@@ -87,7 +89,33 @@ export default function App() {
     }
     void refresh();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [authenticated, page, selectedId]);
+  }, [authenticated, page, selectedId, deletingId, listVersion]);
+
+  async function deleteDocument(document: Document) {
+    if (!document.pode_excluir || busy) return;
+    const unsaved = selectedId === document.id && dirty.current
+      ? "\nOs ajustes não salvos também serão perdidos." : "";
+    if (!window.confirm(
+      `Excluir definitivamente o documento ${document.id.slice(0, 8)}?\n`
+      + "A foto, os valores e o histórico desta tentativa serão apagados. Não é possível desfazer.\n"
+      + "Tipos cadastrados e documentos já enviados ao GED não serão excluídos." + unsaved,
+    )) return;
+    setDeletingId(document.id); setBusy(true); setError("");
+    try {
+      await api<void>(`documentos/${document.id}/`, {
+        method: "DELETE", body: JSON.stringify({ versao: document.versao }),
+      });
+      if (selectedId === document.id) { dirty.current = false; setSelected(null); }
+      setDocuments((current) => current ? {
+        ...current, count: Math.max(0, current.count - 1),
+        results: current.results.filter((item) => item.id !== document.id),
+      } : current);
+      if (documents?.results.length === 1 && page > 1) setPage(page - 1);
+    } catch (cause) { setError(message(cause)); }
+    finally {
+      setDeletingId(null); setBusy(false); setListVersion((current) => current + 1);
+    }
+  }
 
   async function signIn(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -156,7 +184,9 @@ export default function App() {
           <button disabled={busy} onClick={() => void signOut()}>Sair</button>
         </nav>}
       </header>
-      {error && <p className="error" role="alert">{error}</p>}
+      {error && <div className="error" role="alert">
+        <p>{error}</p><button onClick={() => setError("")}>Fechar mensagem</button>
+      </div>}
       {!session ? <p>Conectando…</p> : !session.autenticado ? (
         <form className="login" onSubmit={(event) => void signIn(event)}>
           <h2>Entrar</h2>
@@ -192,9 +222,12 @@ export default function App() {
           </form>
           <section className="jobs">
             <h2>Documentos</h2>
+            <p className="muted">Exclua tentativas antigas pelo botão de cada documento.
+              Durante processamento ou envio ao GED, a exclusão fica bloqueada.</p>
             {documents?.count === 0 && <p>Nenhum documento enviado.</p>}
             <div className="job-list">{documents?.results.map((document) => (
-              <button key={document.id} className={selectedId === document.id ? "selected" : ""}
+              <div key={document.id} className="job-card">
+              <button disabled={busy} className={selectedId === document.id ? "selected" : ""}
                 onClick={() => {
                   if (selectedId !== document.id && mayLeave()) {
                     dirty.current = false; setError(""); setSelected(document);
@@ -205,6 +238,14 @@ export default function App() {
                 <span>{labels[document.status]}</span>
                 <small>{new Date(document.criado_em).toLocaleString("pt-BR")} · {document.id.slice(0, 8)}</small>
               </button>
+              <button className="danger" disabled={busy || !document.pode_excluir}
+                title={document.pode_excluir ? "Excluir foto e dados definitivamente"
+                  : "Aguarde o processamento ou envio ao GED terminar"}
+                aria-label={`Excluir documento ${document.id.slice(0, 8)}`}
+                onClick={() => void deleteDocument(document)}>
+                {deletingId === document.id ? "Excluindo…" : "Excluir"}
+              </button>
+              </div>
             ))}</div>
             <div className="actions pagination">
               <button disabled={!documents?.previous} onClick={() => setPage(page - 1)}>Anterior</button>
