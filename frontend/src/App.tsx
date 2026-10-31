@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, message, setCsrfToken } from "./api";
+import { ApiError, api, message, setCsrfToken } from "./api";
 import { Discovery } from "./Discovery";
 import { Review } from "./Review";
 import { Types } from "./Types";
@@ -67,7 +67,9 @@ export default function App() {
           if (controller.signal.aborted) return;
           setSelected((current) => dirty.current ? current : current?.id === document.id
             && current.versao === document.versao && current.status === document.status
-            && current.ged_status === document.ged_status ? current : document);
+            && current.ged_status === document.ged_status
+            && current.pode_reprocessar === document.pode_reprocessar
+            && current.pode_reenviar_ged === document.pode_reenviar_ged ? current : document);
         }
       } catch (cause) {
         if (!controller.signal.aborted) setError(message(cause));
@@ -126,7 +128,13 @@ export default function App() {
     try {
       await api(`documentos/${document.id}/${ged ? "reenviar-ged" : "reprocessar"}/`, { method: "POST" });
       setSelected(await api<Document>(`documentos/${document.id}/`));
-    } catch (cause) { setError(message(cause)); }
+    } catch (cause) {
+      setError(message(cause));
+      if (cause instanceof ApiError && cause.status === 409) {
+        try { setSelected(await api<Document>(`documentos/${document.id}/`)); }
+        catch (refreshError) { setError(`${message(cause)} ${message(refreshError)}`); }
+      }
+    }
     finally { setBusy(false); }
   }
 
@@ -181,7 +189,7 @@ export default function App() {
               <button key={document.id} className={selectedId === document.id ? "selected" : ""}
                 onClick={() => {
                   if (selectedId !== document.id && mayLeave()) {
-                    dirty.current = false; setSelected(document);
+                    dirty.current = false; setError(""); setSelected(document);
                   }
                 }}>
                 <strong>{document.tipo_nome ?? (document.status === "revisao_tipo"
@@ -204,8 +212,7 @@ export default function App() {
               <Review key={`${selected.id}:${selected.versao}`} document={selected}
                 onDirtyChange={(value) => { dirty.current = value; }}
                 onUpdated={onUpdated} />
-              {selected.status === "aprovado" && ["erro", "nao_configurado", "pendente", "enviando"]
-                .includes(selected.ged_status) && (
+              {selected.pode_reenviar_ged && (
                 <button disabled={busy} onClick={() => void retry(selected, true)}>Reenviar ao GED</button>
               )}
             </>
@@ -219,9 +226,15 @@ export default function App() {
                 }}>Abrir Configuração</a></p>
               )}
               <small>correlation_id: {selected.correlation_id}</small>
-              <p><button disabled={busy} onClick={() => void retry(selected)}>
-                Tentar novamente / recuperar job interrompido
-              </button></p>
+              {selected.pode_reprocessar && (
+                selected.erro_codigo !== "llm_nao_configurado" || session.llm_configurado
+              ) && <p><button disabled={busy} onClick={() => void retry(selected)}>
+                {selected.status === "erro" ? "Tentar novamente" : "Recuperar job interrompido"}
+              </button></p>}
+              {!selected.pode_reprocessar && (
+                selected.status === "pendente" || selected.status === "processando"
+              ) && <p>Aguarde o processamento automático. Se o job ficar interrompido,
+                a recuperação será liberada após 11 minutos sem atualização.</p>}
             </section>
           )}
         </>

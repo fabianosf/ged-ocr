@@ -27,6 +27,8 @@ class DocumentoSerializer(serializers.ModelSerializer):
     tipo_nome = serializers.CharField(source="tipo.nome", read_only=True, default=None)
     pode_aprovar_tipo = serializers.SerializerMethodField()
     erro_mensagem = serializers.SerializerMethodField()
+    pode_reprocessar = serializers.BooleanField(read_only=True)
+    pode_reenviar_ged = serializers.BooleanField(read_only=True)
 
     def get_pode_aprovar_tipo(self, obj) -> bool:
         return can_approve_type(self.context["request"].user)
@@ -48,6 +50,7 @@ class DocumentoSerializer(serializers.ModelSerializer):
             "atualizado_em", "aprovado_em", "ged_status", "ged_erro_codigo",
             "proposta", "proposta_original", "esquema_provisorio",
             "pode_aprovar_tipo", "erro_mensagem",
+            "pode_reprocessar", "pode_reenviar_ged",
         ]
         read_only_fields = fields
 

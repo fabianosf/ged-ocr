@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 from .schema import InvalidDocument, check_schema
 
@@ -76,3 +77,18 @@ class Documento(models.Model):
 
     class Meta:
         ordering = ["-criado_em"]
+
+    @property
+    def pode_reprocessar(self) -> bool:
+        stale = (timezone.now() - self.atualizado_em).total_seconds() > 660
+        return self.status == self.Status.ERRO or (
+            stale and self.status in (self.Status.PENDENTE, self.Status.PROCESSANDO)
+        )
+
+    @property
+    def pode_reenviar_ged(self) -> bool:
+        stale = (timezone.now() - self.atualizado_em).total_seconds() > 660
+        return bool(settings.GED_URL) and self.status == self.Status.APROVADO and (
+            self.ged_status in (self.GEDStatus.ERRO, self.GEDStatus.NAO_CONFIGURADO)
+            or stale and self.ged_status in (self.GEDStatus.PENDENTE, self.GEDStatus.ENVIANDO)
+        )

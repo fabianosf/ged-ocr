@@ -149,6 +149,16 @@ antigas de sobrescrever uma revisão nova. Limites do worker: 540s soft / 600s h
 Não há retry automático de serviços pagos: o usuário pode reenfileirar
 explicitamente. O worker usa concurrency 1 no Compose para limitar consumo.
 
+GET detalhe informa `pode_reprocessar` e `pode_reenviar_ged`, calculados pelas
+mesmas regras usadas nas ações da API. A interface não oferece recuperação
+prematura de jobs em fila/processamento ou reenvio de GED ainda em andamento.
+Esses indicadores são atualizados pelo polling, inclusive quando o prazo de
+660 segundos é ultrapassado. Com `llm_nao_configurado`, a tela orienta abrir
+Configuração antes de repetir uma operação que falharia novamente.
+Erros HTTP são apresentados em português, sem JSON bruto e com uma única
+referência de correlação. Uma tentativa de recuperação em conflito atualiza
+o estado do job, sem reenfileirar silenciosamente.
+
 ## LLM e GED
 
 Configure `LLM_BASE_URL`, `LLM_API_KEY` e `LLM_MODEL`. O provedor deve suportar
@@ -271,6 +281,7 @@ cd backend
 ../.venv/bin/python manage.py check --settings=config.test_settings
 cd ../frontend
 npm ci
+npm test
 npm run build
 npm run dev
 ```

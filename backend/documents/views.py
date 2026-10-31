@@ -263,12 +263,11 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
     def reprocessar(self, request, pk=None):
         with transaction.atomic():
             document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
-            # An interrupted worker can be recovered after its hard time limit plus a margin.
-            stale = (timezone.now() - document.atualizado_em).total_seconds() > 660
-            if not (document.status == Documento.Status.ERRO or (
-                stale and document.status in (Documento.Status.PENDENTE, Documento.Status.PROCESSANDO)
-            )):
-                raise Conflict()
+            if not document.pode_reprocessar:
+                raise Conflict(
+                    "O job não pode ser reprocessado neste estado. "
+                    "Se estiver na fila ou processando, aguarde; recuperação após 11 minutos."
+                )
             document.status = Documento.Status.PENDENTE
             document.erro_codigo = ""
             document.versao += 1
@@ -282,13 +281,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             raise ValidationError("GED não configurado.")
         with transaction.atomic():
             document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
-            stale = (timezone.now() - document.atualizado_em).total_seconds() > 660
-            if document.status != Documento.Status.APROVADO or not (
-                document.ged_status in (Documento.GEDStatus.ERRO, Documento.GEDStatus.NAO_CONFIGURADO)
-                or stale and document.ged_status in (
-                    Documento.GEDStatus.PENDENTE, Documento.GEDStatus.ENVIANDO,
-                )
-            ):
+            if not document.pode_reenviar_ged:
                 raise Conflict()
             document.ged_status = Documento.GEDStatus.PENDENTE
             document.ged_erro_codigo = ""

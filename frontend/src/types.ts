@@ -34,6 +34,8 @@ export interface Document {
   proposta_original: Proposal | Record<string, never>;
   esquema_provisorio: Schema;
   pode_aprovar_tipo: boolean;
+  pode_reprocessar: boolean;
+  pode_reenviar_ged: boolean;
   versao: number;
   criado_em: string;
   ged_status: string;
