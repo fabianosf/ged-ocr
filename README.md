@@ -26,6 +26,12 @@ O worker baixa modelos PaddleOCR no primeiro uso, exigindo internet e recursos
 de CPU/memória. O primeiro processamento pode ser mais lento. A API não importa
 OpenCV/PaddleOCR e não executa inferência. Arquivos ficam em volume compartilhado
 privado; não há rota pública de mídia.
+As APIs DRF limitam anônimos a 60 requisições/minuto e usuários autenticados a
+600/minuto. O login aceita até 5 POSTs/minuto por IP, incluindo logins válidos;
+GET de sessão e logout não consomem esse limite. Exceder o limite retorna 429
+com `Retry-After`, sem alterar as demais respostas. O cache de throttling usa o
+Redis já configurado em `CELERY_BROKER_URL`, compartilhado entre os workers da
+API; os testes usam cache em memória isolado.
 O modelo OCR é reutilizado por processo do worker, com duas threads de CPU, sem
 guardar fotos/OCR no cache do modelo. O Compose desativa a checagem inicial de
 conectividade com repositórios de modelos; downloads necessários continuam sujeitos

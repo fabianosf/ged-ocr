@@ -3,11 +3,19 @@ from io import BytesIO
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
 from rest_framework.test import APIClient
 
 from documents.models import Documento, TipoDocumento
+
+
+@pytest.fixture(autouse=True)
+def clear_throttle_cache():
+    cache.clear()
+    yield
+    cache.clear()
 
 
 def field(value="DOC-01", confidence=0.95, reviewed=False):

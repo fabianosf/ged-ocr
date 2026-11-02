@@ -14,9 +14,10 @@ from kombu.exceptions import OperationalError
 from PIL import Image, UnidentifiedImageError
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
+from rest_framework.exceptions import APIException, PermissionDenied, Throttled, ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from .models import Documento, DocumentoAuditoria, TipoDocumento, registrar_evento
 from .schema import InvalidDocument, leaves, merge_review, validation_errors
@@ -46,10 +47,22 @@ class QueueUnavailable(APIException):
     default_detail = "Fila indisponível. Consulte o job e tente novamente."
 
 
+class SessionLoginThrottle(SimpleRateThrottle):
+    scope = "login"
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
+
+
 @require_http_methods(["GET", "POST", "DELETE"])
 @csrf_protect
 def session_view(request):
     if request.method == "POST":
+        throttle = SessionLoginThrottle()
+        if not throttle.allow_request(request, None):
+            error = Throttled(wait=throttle.wait())
+            headers = {"Retry-After": str(error.wait)} if error.wait is not None else {}
+            return JsonResponse({"erro": str(error.detail)}, status=429, headers=headers)
         user = authenticate(
             request, username=request.POST.get("username", ""),
             password=request.POST.get("password", ""),
