@@ -96,7 +96,7 @@ def test_storage_failure_keeps_document_and_logs_no_personal_data(client, docume
     assert Documento.objects.filter(pk=document.pk).exists()
     assert document.foto.storage.exists(document.foto.name)
     log.assert_called_once_with(
-        "photo_delete_failed correlation_id=%s", document.correlation_id,
+        "exception=%s correlation_id=%s", "OSError", document.correlation_id,
     )
     assert "private-path" not in str(response.data)
 

@@ -133,7 +133,7 @@ def enqueue(document: Documento, *, ged: bool = False) -> None:
             failed = Documento.objects.filter(pk=document.pk, versao=document.versao).first()
             if failed:
                 registrar_evento(failed, "queue_failed")
-        logger.error("queue_failed correlation_id=%s", document.correlation_id)
+        logger.error("exception=%s correlation_id=%s", type(exc).__name__, document.correlation_id)
         error = QueueUnavailable()
         error.detail = {"mensagem": str(error.default_detail), "job_id": str(document.id)}
         raise error from exc
@@ -161,7 +161,9 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             try:
                 document.foto.delete(save=False)
             except OSError as exc:
-                logger.error("photo_delete_failed correlation_id=%s", document.correlation_id)
+                logger.error(
+                    "exception=%s correlation_id=%s", type(exc).__name__, document.correlation_id,
+                )
                 raise APIException(
                     "Não foi possível remover a foto. O documento foi mantido; tente novamente."
                 ) from exc

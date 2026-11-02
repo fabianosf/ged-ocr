@@ -117,14 +117,19 @@ GED_TIMEOUT = int(os.getenv("GED_TIMEOUT", "30"))
 LOGGING = {
     "version": 1, "disable_existing_loggers": True,
     "formatters": {"safe": {"format": "%(levelname)s %(message)s"}},
+    "filters": {"safe_exception": {"()": "documents.logging.SafeExceptionFilter"}},
     "handlers": {
         "console": {"class": "logging.StreamHandler", "formatter": "safe"},
+        "framework": {
+            "class": "logging.StreamHandler", "formatter": "safe",
+            "filters": ["safe_exception"],
+        },
         "null": {"class": "logging.NullHandler"},
     },
     "root": {"handlers": ["null"], "level": "CRITICAL"},
     "loggers": {
         "documents": {"handlers": ["console"], "level": "INFO", "propagate": False},
-        "django": {"handlers": ["console"], "level": "CRITICAL", "propagate": False},
-        "celery": {"handlers": ["console"], "level": "CRITICAL", "propagate": False},
+        "django": {"handlers": ["framework"], "level": "ERROR", "propagate": False},
+        "celery": {"handlers": ["framework"], "level": "ERROR", "propagate": False},
     },
 }

@@ -468,6 +468,9 @@ Não publique PostgreSQL/Redis nem mídia diretamente. Não ative logs de
 debug, access logs ou dumps de exceção que possam incluir payloads. Logs da
 aplicação contêm somente evento, código, estado HTTP e `correlation_id` gerado
 no servidor; frameworks/provedores não têm logs detalhados habilitados.
+Exceções registram somente o nome da classe e `correlation_id`, sem mensagem,
+argumentos ou traceback. Os loggers Django e Celery aceitam nível `ERROR` com
+saída sanitizada; eventos sem contexto de requisição/tarefa usam `-` no identificador.
 O superusuário gerencia tipos pelo frontend; admin Django é apenas complementar.
 O histórico de atividades registra autor, horário, estado e versão, mas não
 armazena valores extraídos ou o conteúdo da foto. Isso não substitui controles

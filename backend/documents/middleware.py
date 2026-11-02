@@ -25,6 +25,10 @@ class CorrelationMiddleware:
 
 def api_exception_handler(exc, context):
     response = exception_handler(exc, context)
+    logger.log(
+        logging.ERROR if response is None or response.status_code >= 500 else logging.WARNING,
+        "exception=%s correlation_id=%s", type(exc).__name__, context["request"].correlation_id,
+    )
     if response is not None:
         response.data = {
             "erro": response.data,

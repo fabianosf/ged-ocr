@@ -44,6 +44,7 @@ class SafeDocumentTask(Task):
         if document is None:
             logger.info("task_document_removed")
             return
+        self.request.correlation_id = str(document.correlation_id)
         changes = (
             {"ged_status": Documento.GEDStatus.ERRO, "ged_erro_codigo": "ged_falha_interna"}
             if self.name.endswith("sync_ged")
@@ -58,7 +59,7 @@ class SafeDocumentTask(Task):
                     setattr(current, field, value)
                 current.save(update_fields=[*changes, "atualizado_em"])
                 registrar_evento(current, "task_failed")
-        logger.error("task_failed correlation_id=%s code=falha_interna", document.correlation_id)
+        logger.error("exception=%s correlation_id=%s", type(exc).__name__, document.correlation_id)
 
 
 @shared_task(base=SafeDocumentTask)
@@ -149,7 +150,7 @@ def process_document(job_id: str, version: int) -> None:
                 current.erro_codigo = code
                 current.save(update_fields=["status", "erro_codigo", "atualizado_em"])
                 registrar_evento(current, "processing_failed")
-        logger.error("process_failed correlation_id=%s code=%s", document.correlation_id, code)
+        logger.error("exception=%s correlation_id=%s", type(exc).__name__, document.correlation_id)
 
 
 @shared_task(base=SafeDocumentTask)
@@ -189,4 +190,4 @@ def sync_ged(job_id: str, version: int) -> None:
                 current.ged_erro_codigo = code
                 current.save(update_fields=["ged_status", "ged_erro_codigo", "atualizado_em"])
                 registrar_evento(current, "ged_failed")
-        logger.error("ged_failed correlation_id=%s code=%s", document.correlation_id, code)
+        logger.error("exception=%s correlation_id=%s", type(exc).__name__, document.correlation_id)
