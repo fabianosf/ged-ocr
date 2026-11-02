@@ -434,6 +434,15 @@ Escape, erros/conflitos, bloqueio durante o pedido e ajustes ainda não salvos.
 
 Python 3.12 e Node 22:
 
+O fluxo de navegador contra Django real tem configuração separada:
+`cd frontend && npm run test:integration` (ou com `CHROME_BIN` instalado).
+Usa portas exclusivas 8765/5175, banco SQLite e mídia temporários, usuário
+sintético e tarefas Celery eager; não requer broker nem serviços externos.
+`GED_E2E_TEST_MODE=1` habilita somente o launcher de testes com configurações
+isoladas; OCR e LLM são substituídos apenas nesse processo. O ambiente normal
+não usa esses falsos. Esse teste valida HTTP/CSRF, upload, execução da tarefa,
+revisão e aprovação, mas não valida o transporte pelo broker ou inferência real.
+
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -r backend/requirements-dev.txt
