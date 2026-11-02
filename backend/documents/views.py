@@ -144,7 +144,12 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         queryset = Documento.objects.select_related("tipo")
+        if self.action == "list":
+            queryset = queryset.defer("ocr", "extraido")
         return queryset if self.request.user.is_staff else queryset.filter(usuario=self.request.user)
+
+    def _get_locked_document(self):
+        return self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
 
     def destroy(self, request, pk=None):
         serializer = VersionSerializer(data=request.data)
@@ -223,7 +228,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = DefineTypeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
-            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            document = self._get_locked_document()
             if (document.status != Documento.Status.REVISAO_TIPO
                     or document.versao != serializer.validated_data["versao"]):
                 raise Conflict()
@@ -246,7 +251,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = AssignTypeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
-            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            document = self._get_locked_document()
             if (document.status != Documento.Status.REVISAO_TIPO
                     or document.versao != serializer.validated_data["versao"]):
                 raise Conflict()
@@ -278,7 +283,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = VersionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
-            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            document = self._get_locked_document()
             if (document.status != Documento.Status.REVISAO_TIPO
                     or document.versao != serializer.validated_data["versao"]
                     or document.extracao_versao != document.versao or not document.resultado):
@@ -311,7 +316,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = ReviewSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
-            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            document = self._get_locked_document()
             if (document.status != Documento.Status.REVISAO
                     or document.versao != serializer.validated_data["versao"]):
                 raise Conflict()
@@ -334,7 +339,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = VersionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
-            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            document = self._get_locked_document()
             if (document.status != Documento.Status.REVISAO
                     or document.versao != serializer.validated_data["versao"]):
                 raise Conflict()
@@ -369,7 +374,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = VersionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
-            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            document = self._get_locked_document()
             if (document.status not in (Documento.Status.REVISAO, Documento.Status.REVISAO_TIPO)
                     or document.versao != serializer.validated_data["versao"]):
                 raise Conflict()
@@ -384,7 +389,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = VersionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
-            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            document = self._get_locked_document()
             if (document.versao != serializer.validated_data["versao"]
                     or not document.pode_excluir):
                 raise Conflict("O documento não pode ser arquivado enquanto há processamento ou envio em andamento.")
@@ -397,7 +402,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["post"])
     def reprocessar(self, request, pk=None):
         with transaction.atomic():
-            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            document = self._get_locked_document()
             if not document.pode_reprocessar:
                 raise Conflict(
                     "O job não pode ser reprocessado neste estado. "
@@ -417,7 +422,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         if not settings.GED_URL:
             raise ValidationError("GED não configurado.")
         with transaction.atomic():
-            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            document = self._get_locked_document()
             if not document.pode_reenviar_ged:
                 raise Conflict()
             document.ged_status = Documento.GEDStatus.PENDENTE

@@ -4,6 +4,8 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from kombu.exceptions import OperationalError
 from rest_framework.test import APIClient
@@ -159,6 +161,21 @@ def test_schema_snapshot_is_stable(client, document, document_type):
     document_type.esquema["properties"]["novo"] = {"type": "string"}
     document_type.save()
     assert "novo" not in client.get(url(document)).data["esquema"]["properties"]
+
+
+def test_document_list_omits_heavy_columns_without_changing_response(client, document):
+    detail = client.get(url(document))
+    with CaptureQueriesContext(connection) as queries:
+        response = client.get("/api/documentos/")
+    assert response.status_code == 200
+    assert response.data["results"] == [detail.data]
+    document_queries = [
+        query["sql"] for query in queries if 'FROM "documents_documento"' in query["sql"]
+    ]
+    assert len(document_queries) == 2
+    for sql in document_queries:
+        assert '"documents_documento"."ocr"' not in sql
+        assert '"documents_documento"."extraido"' not in sql
 
 
 def test_types_write_is_admin_only(client, user, schema):
