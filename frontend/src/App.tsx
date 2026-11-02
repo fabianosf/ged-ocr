@@ -30,6 +30,7 @@ const labels: Record<Document["status"], string> = {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [documents, setDocuments] = useState<Page<Document> | null>(null);
   const [selected, setSelected] = useState<Document | null>(null);
   const [error, setError] = useState("");
@@ -69,6 +70,11 @@ export default function App() {
     setSession(value);
   };
   useEffect(() => {
+    const expire = () => setSessionExpired(true);
+    window.addEventListener("session-expired", expire);
+    return () => window.removeEventListener("session-expired", expire);
+  }, []);
+  useEffect(() => {
     const controller = new AbortController();
     api<Session>("session/", { signal: controller.signal }).then(updateSession)
       .catch((cause: unknown) => {
@@ -80,7 +86,7 @@ export default function App() {
   const selectedId = selected?.id;
   const authenticated = session?.autenticado;
   useEffect(() => {
-    if (!authenticated || deletingId) return;
+    if (!authenticated || deletingId || sessionExpired) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
@@ -111,7 +117,7 @@ export default function App() {
     }
     void refresh();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [authenticated, page, selectedId, deletingId, listVersion]);
+  }, [authenticated, page, selectedId, deletingId, listVersion, sessionExpired]);
 
   async function deleteDocument(document: Document) {
     if (!document.pode_excluir || busy) return;
@@ -148,6 +154,7 @@ export default function App() {
           username: String(data.get("username")), password: String(data.get("password")),
         }),
       }));
+      setSessionExpired(false);
     } catch (cause) { setError(message(cause)); }
     finally { setBusy(false); }
   }
@@ -229,6 +236,16 @@ export default function App() {
         <Button variant="ghost" size="icon-sm" aria-label="Fechar confirmação"
           onClick={() => setSuccess("")}><X /></Button>
       </div>}
+      {sessionExpired && <section className="workspace-panel" role="alert">
+        <h2>Sessão expirada</h2>
+        <p>Entre novamente para continuar. Seus ajustes foram mantidos.</p>
+        <form onSubmit={(event) => void signIn(event)}>
+          <label>Usuário<Input name="username" autoComplete="username" required /></label>
+          <label>Senha<Input name="password" type="password" autoComplete="current-password" required /></label>
+          <Button disabled={busy}>Entrar</Button>
+        </form>
+      </section>}
+      <div hidden={sessionExpired}>
       {!session ? <div role="status" className="flex items-center gap-2 py-12 text-muted-foreground">
         <LoaderCircle className="size-5 animate-spin motion-reduce:animate-none" />Conectando…
       </div> : !session.autenticado ? (
@@ -425,6 +442,7 @@ export default function App() {
           </footer>
         </>
       )}
+      </div>
       {confirmation.dialog}
       <DeleteDocumentDialog document={deleteTarget} busy={deletingId !== null}
         error={deleteError} unsaved={deleteTarget?.id === selectedId && dirty.current}

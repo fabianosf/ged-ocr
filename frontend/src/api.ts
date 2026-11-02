@@ -37,9 +37,31 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
       && !(options.body instanceof URLSearchParams)) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(`/api/${path}`, { ...options, headers, credentials: "same-origin" });
+  let response: Response;
+  try {
+    response = await fetch(`/api/${path}`, { ...options, headers, credentials: "same-origin" });
+  } catch (cause) {
+    if (!(cause instanceof TypeError)) throw cause;
+    throw new Error("Rede indisponível. Seus ajustes foram mantidos. Verifique a conexão e tente novamente.");
+  }
   if (!response.ok) {
     const correlation = response.headers.get("X-Correlation-ID");
+    if (response.status === 429) {
+      const wait = Number(response.headers.get("Retry-After"));
+      throw new ApiError(429, `Limite de solicitações atingido. ${
+        wait > 0 ? `Aguarde ${wait} segundos` : "Aguarde"
+      } e tente novamente. Seus ajustes foram mantidos.`, correlation);
+    }
+    if ((response.status === 401 || response.status === 403) && path !== "session/"
+        && typeof window !== "undefined") {
+      const session = await api<{ autenticado: boolean; csrfToken: string }>("session/");
+      setCsrfToken(session.csrfToken);
+      if (response.status === 401 || !session.autenticado) {
+        window.dispatchEvent(new Event("session-expired"));
+        throw new ApiError(response.status,
+          "Sessão expirada. Entre novamente para continuar. Seus ajustes foram mantidos.", correlation);
+      }
+    }
     const text = await response.text();
     let payload: unknown;
     try { payload = JSON.parse(text); }

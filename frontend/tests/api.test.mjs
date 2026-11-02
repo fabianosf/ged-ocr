@@ -13,7 +13,24 @@ test("409 presents readable detail and only one correlation reference", async (t
     assert.equal(error.message.includes("{"), false);
     return true;
   });
+
 });
+
+test("offline errors provide a clear retry message", async (t) => {
+    t.mock.method(globalThis, "fetch", async () => { throw new TypeError("Failed to fetch"); });
+    await assert.rejects(() => api("documentos/"), {
+      message: "Rede indisponível. Seus ajustes foram mantidos. Verifique a conexão e tente novamente.",
+    });
+  });
+
+  test("429 explains when to retry without changing authentication", async (t) => {
+    t.mock.method(globalThis, "fetch", async () => new Response('{"erro":"limit"}', {
+      status: 429, headers: { "Retry-After": "30" },
+    }));
+    await assert.rejects(() => api("documentos/"), {
+      message: "Limite de solicitações atingido. Aguarde 30 segundos e tente novamente. Seus ajustes foram mantidos.",
+    });
+  });
 
 test("field validation messages are readable", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({

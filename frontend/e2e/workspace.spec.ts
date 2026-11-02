@@ -118,8 +118,22 @@ test("branded login uses accessible controls and authenticates without changing 
   expect(mock.submitted[0]).toEqual({
     path: "session", body: { username: "synthetic-user", password: "synthetic-password" },
   });
+
 });
 
+test("expired session allows reauthentication without losing review edits", async ({ page }) => {
+    await mockWorkspace(page);
+    await page.locator(".job-open").click();
+    await page.getByRole("textbox", { name: "Código", exact: true }).fill("RASCUNHO");
+    await page.route("**/api/documentos/*/revisao/", (route) =>
+      route.fulfill({ status: 401, json: { erro: "expired" } }));
+    await page.getByRole("button", { name: "Salvar revisão", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Sessão expirada" })).toBeVisible();
+    await page.getByLabel("Usuário", { exact: true }).fill("synthetic-user");
+    await page.getByLabel("Senha", { exact: true }).fill("synthetic-password");
+    await page.getByRole("button", { name: "Entrar", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Código", exact: true })).toHaveValue("RASCUNHO");
+  });
 test("upload works after asynchronous confirmation and decorative effects do not intercept input", async ({ page }) => {
   const mock = await mockWorkspace(page);
   await page.getByLabel("Foto do documento", { exact: true }).setInputFiles({
