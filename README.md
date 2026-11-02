@@ -48,6 +48,38 @@ administrador deve verificar o limite e o tamanho da tabela antes de repetir.
 
 Para parar: `docker compose down`. Não use `down -v` se precisar preservar os dados.
 
+### Backup e restauração local
+
+Para manter banco e fotos consistentes, pare temporariamente a aplicação e o
+worker, mantenha o PostgreSQL ativo e gere a cópia:
+
+```sh
+docker compose stop backend worker frontend
+./scripts/backup.sh
+docker compose up -d --wait
+```
+
+Os arquivos ficam em `./backups/`, com acesso restrito ao usuário local, e
+backups com mais de 30 dias são removidos. Para armazená-los em outro local,
+defina `BACKUP_DIR=/caminho/seguro/ged-ocr ./scripts/backup.sh`. Os backups
+contêm documentos e dados pessoais: proteja o destino, criptografe cópias
+externas e teste periodicamente a restauração. O script não faz cópia externa
+nem substitui uma política organizacional de backup.
+
+Para restaurar **sobre a instalação existente** (isso substitui os dados
+atuais), mantenha backend, worker e frontend parados e o banco em execução.
+Use arquivos do mesmo horário:
+
+```sh
+docker compose stop backend worker frontend
+docker compose exec -T db sh -c \
+  'pg_restore --clean --if-exists --no-owner --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"' \
+  < ./backups/ged-ocr-db-AAAAMMDDTHHMMSSZ.dump
+docker compose run --rm --no-deps backend sh -c 'tar -C /app -xzf -' \
+  < ./backups/ged-ocr-media-AAAAMMDDTHHMMSSZ.tar.gz
+docker compose up -d --wait
+```
+
 ## Esquemas configuráveis
 
 `TipoDocumento.esquema` utiliza um subconjunto explícito de JSON Schema 2020-12.
@@ -170,7 +202,13 @@ O token deve ser atualizado após login/logout.
 | `POST /api/documentos/{job_id}/reenviar-ged/` | Reenvia aprovado com falha/GED agora configurado |
 | `POST /api/documentos/{job_id}/definir-tipo/` | `{versao, proposta}`; 202, reenfileira somente extração |
 | `POST /api/documentos/{job_id}/aprovar-tipo/` | `{versao}`; cria tipo e passa à revisão dos valores |
+| `POST /api/documentos/{job_id}/atribuir-tipo/` | `{versao, tipo_id}`; associa tipo ativo e reextrai sem repetir OCR/classificação |
+| `POST /api/documentos/{job_id}/rejeitar/` | `{versao}`; rejeita documento em revisão |
+| `POST /api/documentos/{job_id}/arquivar/` | `{versao}`; arquiva sem excluir foto e dados |
+| `GET /api/documentos/{job_id}/auditoria/` | Últimas 100 ações e mudanças de estado, sem valores extraídos |
+| `GET /api/auditoria/` | Histórico paginado; proprietário vê seus eventos (inclusive exclusões), equipe vê todos |
 | `/api/tipos/` | GET autenticado; POST/PUT/PATCH apenas equipe; sem DELETE |
+| `/api/tipos/ativos/` | Tipos ativos disponíveis para associação manual |
 
 Conflito de versão/estado retorna **409**. `linhas` mapeia cada tabela para uma
 lista de índices das linhas da revisão anterior: `{"itens": [1, 0, null]}` mantém
@@ -180,7 +218,8 @@ Um valor modificado deve vir com `revisado: true`.
 
 Publicação na fila ocorre após commit. Falha do broker retorna **503**, inclui
 `job_id` e persiste erro; não responde 202 falsamente. Estados principais:
-`pendente`, `processando`, `revisao_tipo`, `revisao`, `aprovado`, `erro`.
+`pendente`, `processando`, `revisao_tipo`, `revisao`, `aprovado`, `rejeitado`,
+`arquivado`, `erro`.
 Os erros retornam códigos sanitizados. Jobs presos em fila/processamento/envio
 podem ser recuperados após 660 segundos. Gerações de tarefa impedem entregas
 antigas de sobrescrever uma revisão nova. Limites do worker: 540s soft / 600s hard.
@@ -409,5 +448,12 @@ debug, access logs ou dumps de exceção que possam incluir payloads. Logs da
 aplicação contêm somente evento, código, estado HTTP e `correlation_id` gerado
 no servidor; frameworks/provedores não têm logs detalhados habilitados.
 O superusuário gerencia tipos pelo frontend; admin Django é apenas complementar.
-Não há antivírus, trilha de cada edição intermediária, rejeição/arquivamento,
-busca GED, exportação para tabelas físicas ou correção manual de tipo desconhecido.
+O histórico de atividades registra autor, horário, estado e versão, mas não
+armazena valores extraídos ou o conteúdo da foto. Isso não substitui controles
+de acesso ao banco nem políticas de retenção. Rejeição, arquivamento e associação
+manual de tipo estão disponíveis; ainda não há antivírus, busca GED ou exportação
+para tabelas físicas. O contrato GED descrito neste README precisa ser confirmado
+com o fornecedor e testado em ambiente de homologação antes de configurar
+`GED_URL`. Chamadas pagas de IA não são repetidas automaticamente; em caso de
+falha, a retomada continua manual. O worker agora expõe o estado de saúde pelo
+`docker compose ps`; monitore também o espaço em disco e a execução dos backups.

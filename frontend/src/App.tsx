@@ -4,6 +4,8 @@ import { Discovery } from "./Discovery";
 import { Review } from "./Review";
 import { Types } from "./Types";
 import { DeleteDocumentDialog } from "./components/DeleteDocumentDialog";
+import { DocumentActions } from "./components/DocumentActions";
+import { AuditTrail } from "./components/AuditTrail";
 import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
 import { ProcessingProgress, stageMessages } from "./components/ProcessingProgress";
@@ -22,7 +24,8 @@ import type { Document, Page, Session } from "./types";
 const labels: Record<Document["status"], string> = {
   pendente: "Na fila", processando: "Processando", revisao: "Revisão",
   revisao_tipo: "Documento novo",
-  aprovado: "Aprovado", erro: "Precisa de atenção",
+  aprovado: "Aprovado", rejeitado: "Rejeitado", arquivado: "Arquivado",
+  erro: "Precisa de atenção",
 };
 
 export default function App() {
@@ -55,6 +58,11 @@ export default function App() {
   const onUpdated = (document: Document) => {
     dirty.current = false;
     setSelected(document);
+  };
+  const beforeDocumentAction = async () => {
+    if (!await mayLeave()) return false;
+    dirty.current = false;
+    return true;
   };
 
   const updateSession = (value: Session) => {
@@ -357,13 +365,19 @@ export default function App() {
             </p>
           </section>
           {selected?.status === "revisao_tipo" ? (
-            <Discovery key={`${selected.id}:${selected.versao}`} document={selected}
-              onDirtyChange={(value) => { dirty.current = value; }} onUpdated={onUpdated} />
+            <>
+              <Discovery key={`${selected.id}:${selected.versao}`} document={selected}
+                onDirtyChange={(value) => { dirty.current = value; }} onUpdated={onUpdated} />
+              <DocumentActions document={selected} onUpdated={onUpdated} disabled={busy}
+                beforeAction={beforeDocumentAction} />
+            </>
           ) : selected && (selected.status === "revisao" || selected.status === "aprovado") ? (
             <>
               <Review key={`${selected.id}:${selected.versao}`} document={selected}
                 onDirtyChange={(value) => { dirty.current = value; }}
                 onUpdated={onUpdated} />
+              <DocumentActions document={selected} onUpdated={onUpdated} disabled={busy}
+                beforeAction={beforeDocumentAction} />
               {selected.pode_reenviar_ged && (
                 <Button variant="outline" disabled={busy}
                   onClick={() => void retry(selected, true)}><RotateCw />Reenviar ao GED</Button>
@@ -372,17 +386,22 @@ export default function App() {
           ) : selected && (
             <section className={selected.status === "erro" ? "error" : "processing"}
               role={selected.status === "erro" ? "alert" : undefined}>
-              <h2>{selected.status === "erro" ? "Não foi possível concluir esta tentativa"
+              <h2>{selected.status === "arquivado" ? "Documento arquivado"
+                : selected.status === "rejeitado" ? "Documento rejeitado"
+                : selected.status === "erro" ? "Não foi possível concluir esta tentativa"
                 : selected.pode_reprocessar ? "O processamento precisa ser retomado"
                 : selected.status === "pendente" ? "Documento recebido"
                 : "Estamos lendo seu documento"}</h2>
-              {selected.status === "erro" ? <p>{selected.erro_mensagem}</p>
+              {selected.status === "arquivado" || selected.status === "rejeitado" ? null
+                : selected.status === "erro" ? <p>{selected.erro_mensagem}</p>
                 : <ProcessingProgress document={selected} />}
               {selected.erro_codigo === "llm_nao_configurado" && (
                 <p><a href="#configuracao" onClick={(event) => {
                   event.preventDefault(); void openConfig();
                 }}>Abrir Configuração</a></p>
               )}
+              <DocumentActions document={selected} onUpdated={onUpdated} disabled={busy}
+                beforeAction={beforeDocumentAction} />
               {selected.pode_reprocessar && (
                 selected.erro_codigo !== "llm_nao_configurado" || session.llm_configurado
               ) && <p><Button variant="outline" disabled={busy} onClick={() => void retry(selected)}>
@@ -397,6 +416,7 @@ export default function App() {
               </details>
             </section>
           )}
+          {selected && <AuditTrail key={`${selected.id}:${selected.versao}`} document={selected} />}
           <footer className="app-footer">
             <span>GED OCR · Inteligência documental</span><span>Extração assistida. Decisão humana.</span>
           </footer>

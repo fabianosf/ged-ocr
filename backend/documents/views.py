@@ -18,9 +18,11 @@ from rest_framework.exceptions import APIException, PermissionDenied, Validation
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
-from .models import Documento, TipoDocumento
+from .models import Documento, DocumentoAuditoria, TipoDocumento, registrar_evento
 from .schema import InvalidDocument, leaves, merge_review, validation_errors
 from .serializers import (
+    AssignTypeSerializer,
+    AuditEntrySerializer,
     DefineTypeSerializer,
     DocumentoSerializer,
     ReviewSerializer,
@@ -81,6 +83,21 @@ class TipoViewSet(viewsets.ModelViewSet):
     permission_classes = [TypePermission]
     http_method_names = ["get", "post", "put", "patch", "head", "options"]
 
+    @action(detail=False, methods=["get"], url_path="ativos")
+    def ativos(self, request):
+        types = TipoDocumento.objects.filter(ativo=True).order_by("nome").values("id", "nome")
+        return Response(list(types))
+
+
+class AuditViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AuditEntrySerializer
+
+    def get_queryset(self):
+        queryset = DocumentoAuditoria.objects.select_related("ator")
+        if self.request.user.is_staff:
+            return queryset
+        return queryset.filter(proprietario_id_snapshot=self.request.user.pk)
+
 
 def enqueue(document: Documento, *, ged: bool = False) -> None:
     try:
@@ -99,7 +116,10 @@ def enqueue(document: Documento, *, ged: bool = False) -> None:
             pending.filter(ged_status=Documento.GEDStatus.PENDENTE) if ged
             else pending.filter(status=Documento.Status.PENDENTE)
         )
-        pending.update(**changes, atualizado_em=timezone.now())
+        if pending.update(**changes, atualizado_em=timezone.now()):
+            failed = Documento.objects.filter(pk=document.pk, versao=document.versao).first()
+            if failed:
+                registrar_evento(failed, "queue_failed")
         logger.error("queue_failed correlation_id=%s", document.correlation_id)
         error = QueueUnavailable()
         error.detail = {"mensagem": str(error.default_detail), "job_id": str(document.id)}
@@ -133,6 +153,9 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
                     "Não foi possível remover a foto. O documento foi mantido; tente novamente."
                 ) from exc
             correlation_id = document.correlation_id
+            registrar_evento(
+                document, "document_deleted", ator=request.user,
+            )
             document.delete()
         logger.info("document_deleted correlation_id=%s", correlation_id)
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -160,6 +183,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             document = Documento.objects.create(
                 usuario=request.user, foto=photo, correlation_id=request.correlation_id,
             )
+            registrar_evento(document, "document_uploaded", ator=request.user)
             transaction.on_commit(lambda: enqueue(document))
         return Response({
             "job_id": str(document.id), "correlation_id": str(document.correlation_id),
@@ -198,6 +222,37 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             document.erro_codigo = ""
             document.versao += 1
             document.save()
+            registrar_evento(document, "type_proposal_updated", ator=request.user)
+            transaction.on_commit(lambda: enqueue(document))
+        return Response(self.get_serializer(document).data, status=202)
+
+    @action(detail=True, methods=["post"], url_path="atribuir-tipo")
+    def atribuir_tipo(self, request, pk=None):
+        serializer = AssignTypeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            if (document.status != Documento.Status.REVISAO_TIPO
+                    or document.versao != serializer.validated_data["versao"]):
+                raise Conflict()
+            document_type = get_object_or_404(
+                TipoDocumento.objects.filter(ativo=True),
+                pk=serializer.validated_data["tipo_id"],
+            )
+            document.tipo = document_type
+            document.esquema = document_type.esquema
+            document.status = Documento.Status.PENDENTE
+            document.etapa = ""
+            document.somente_extracao = True
+            document.resultado = {}
+            document.erros_validacao = []
+            document.erro_codigo = ""
+            document.versao += 1
+            document.save()
+            registrar_evento(
+                document, "type_assigned_manually", ator=request.user,
+                detalhes={"tipo_id": document_type.pk},
+            )
             transaction.on_commit(lambda: enqueue(document))
         return Response(self.get_serializer(document).data, status=202)
 
@@ -232,6 +287,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             document.status = Documento.Status.REVISAO
             document.versao += 1
             document.save()
+            registrar_evento(document, "type_created_from_proposal", ator=request.user)
         logger.info("type_approved correlation_id=%s", document.correlation_id)
         return Response(self.get_serializer(document).data)
 
@@ -255,6 +311,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             document.versao += 1
             document.revisado_por = request.user
             document.save()
+            registrar_evento(document, "review_saved", ator=request.user)
         return Response(self.get_serializer(document).data)
 
     @action(detail=True, methods=["post"])
@@ -282,7 +339,44 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             document.save()
             if settings.GED_URL:
                 transaction.on_commit(lambda: enqueue(document, ged=True))
+            registrar_evento(document, "document_approved", ator=request.user)
         logger.info("review_approved correlation_id=%s", document.correlation_id)
+        return Response(self.get_serializer(document).data)
+
+    @action(detail=True, methods=["get"])
+    def auditoria(self, request, pk=None):
+        document = self.get_object()
+        events = document.eventos_auditoria.select_related("ator")[:100]
+        return Response(AuditEntrySerializer(events, many=True).data)
+
+    @action(detail=True, methods=["post"])
+    def rejeitar(self, request, pk=None):
+        serializer = VersionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            if (document.status not in (Documento.Status.REVISAO, Documento.Status.REVISAO_TIPO)
+                    or document.versao != serializer.validated_data["versao"]):
+                raise Conflict()
+            document.status = Documento.Status.REJEITADO
+            document.versao += 1
+            document.save()
+            registrar_evento(document, "document_rejected", ator=request.user)
+        return Response(self.get_serializer(document).data)
+
+    @action(detail=True, methods=["post"])
+    def arquivar(self, request, pk=None):
+        serializer = VersionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            document = self.get_queryset().select_for_update(of=("self",)).get(pk=self.get_object().pk)
+            if (document.versao != serializer.validated_data["versao"]
+                    or not document.pode_excluir):
+                raise Conflict("O documento não pode ser arquivado enquanto há processamento ou envio em andamento.")
+            document.status = Documento.Status.ARQUIVADO
+            document.versao += 1
+            document.save()
+            registrar_evento(document, "document_archived", ator=request.user)
         return Response(self.get_serializer(document).data)
 
     @action(detail=True, methods=["post"])
@@ -299,6 +393,7 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             document.erro_codigo = ""
             document.versao += 1
             document.save()
+            registrar_evento(document, "processing_requeued", ator=request.user)
             transaction.on_commit(lambda: enqueue(document))
         return Response({"job_id": str(document.id)}, status=202)
 
@@ -314,5 +409,6 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             document.ged_erro_codigo = ""
             document.versao += 1
             document.save()
+            registrar_evento(document, "ged_requeued", ator=request.user)
             transaction.on_commit(lambda: enqueue(document, ged=True))
         return Response({"job_id": str(document.id)}, status=202)

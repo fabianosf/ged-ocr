@@ -8,7 +8,7 @@ from django.utils import timezone
 from kombu.exceptions import OperationalError
 from rest_framework.test import APIClient
 
-from documents.models import Documento
+from documents.models import Documento, DocumentoAuditoria
 from documents.schema import leaves
 
 
@@ -128,6 +128,9 @@ def test_review_and_approval(client, document, result, schema):
     assert client.patch(url(document, "revisao"), {
         "versao": 3, "resultado": draft,
     }, format="json").status_code == 409
+    assert list(document.eventos_auditoria.values_list("evento", flat=True)) == [
+        "document_approved", "review_saved",
+    ]
 
 
 def test_unreviewed_fields_block_approval(client, document):
@@ -197,6 +200,76 @@ def test_reprocess_only_error_or_stale(client, document, django_capture_on_commi
     document.refresh_from_db()
     assert document.status == Documento.Status.PENDENTE
     assert document.versao == 2
+    assert document.eventos_auditoria.filter(evento="processing_requeued").exists()
+
+
+def test_unknown_type_can_be_assigned_and_reextracted(
+    client, user, document, document_type, django_capture_on_commit_callbacks,
+):
+    document.status = Documento.Status.REVISAO_TIPO
+    document.somente_extracao = True
+    document.ocr = [{"texto": "dados sintéticos"}]
+    document.save()
+    assert client.get("/api/tipos/ativos/").data == [
+        {"id": document_type.id, "nome": document_type.nome},
+    ]
+    with patch("documents.views.process_document.apply_async") as task:
+        with django_capture_on_commit_callbacks(execute=True):
+            response = client.post(url(document, "atribuir-tipo"), {
+                "versao": 1, "tipo_id": document_type.id,
+            }, format="json")
+    assert response.status_code == 202
+    assert task.call_args.kwargs["args"] == [str(document.id), 2]
+    document.refresh_from_db()
+    assert document.tipo_id == document_type.id
+    assert document.ocr == [{"texto": "dados sintéticos"}]
+    assert document.status == Documento.Status.PENDENTE
+    assert document.eventos_auditoria.get(evento="type_assigned_manually").ator == user
+
+
+def test_type_assignment_rejects_inactive_types(client, document, document_type):
+    document.status = Documento.Status.REVISAO_TIPO
+    document.save()
+    document_type.ativo = False
+    document_type.save()
+    response = client.post(url(document, "atribuir-tipo"), {
+        "versao": 1, "tipo_id": document_type.id,
+    }, format="json")
+    assert response.status_code == 404
+
+
+def test_reject_archive_and_audit_are_versioned(client, document):
+    response = client.post(url(document, "rejeitar"), {"versao": 1}, format="json")
+    assert response.status_code == 200
+    assert response.data["status"] == Documento.Status.REJEITADO
+    assert response.data["versao"] == 2
+    event = client.get(url(document, "auditoria"))
+    assert event.status_code == 200
+    assert event.data[0]["evento"] == "document_rejected"
+    assert event.data[0]["ator"] == "tester"
+
+    response = client.post(url(document, "arquivar"), {"versao": 2}, format="json")
+    assert response.status_code == 200
+    assert response.data["status"] == Documento.Status.ARQUIVADO
+    assert response.data["versao"] == 3
+
+
+def test_audit_does_not_expose_other_owners_documents(client, document):
+    owner = get_user_model().objects.create_user(username="other-owner")
+    document.usuario = owner
+    document.save()
+    assert client.get(url(document, "auditoria")).status_code == 404
+    assert client.get("/api/auditoria/").data["count"] == 0
+
+
+def test_audit_stores_workflow_metadata_not_extracted_values(client, document, result, schema):
+    draft = reviewed(result, schema)
+    assert client.patch(url(document, "revisao"), {
+        "versao": 1, "resultado": draft,
+    }, format="json").status_code == 200
+    audit = DocumentoAuditoria.objects.get(documento=document, evento="review_saved")
+    assert "DOC-01" not in str(audit.detalhes)
+    assert audit.documento_id_snapshot == document.id
 
 
 def test_login_and_logout_enforce_csrf(user):

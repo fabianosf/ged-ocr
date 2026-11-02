@@ -118,6 +118,27 @@ def test_worker_success_and_duplicate_delivery(document, result, document_type):
     assert document.esquema == document_type.esquema
 
 
+def test_manual_type_assignment_reuses_saved_ocr(document, result, document_type):
+    document.status = Documento.Status.PENDENTE
+    document.somente_extracao = True
+    document.ocr = [{"texto": "dados sintéticos"}]
+    document.save()
+    with (
+        patch("documents.tasks.prepare_image", return_value=b"image"),
+        patch("documents.tasks.run_ocr") as ocr,
+        patch("documents.tasks.detect_type") as classify,
+        patch("documents.tasks.extract", return_value=result) as extract_result,
+    ):
+        process_document(str(document.id), 1)
+    ocr.assert_not_called()
+    classify.assert_not_called()
+    extract_result.assert_called_once()
+    document.refresh_from_db()
+    assert document.status == Documento.Status.REVISAO
+    assert document.tipo_id == document_type.id
+    assert document.ocr == [{"texto": "dados sintéticos"}]
+
+
 def test_stale_delivery_does_not_process_new_generation(document):
     document.status = Documento.Status.PENDENTE
     document.versao = 2

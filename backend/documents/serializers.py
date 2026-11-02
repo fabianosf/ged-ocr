@@ -72,6 +72,10 @@ class VersionSerializer(serializers.Serializer):
     versao = serializers.IntegerField(min_value=1)
 
 
+class AssignTypeSerializer(VersionSerializer):
+    tipo_id = serializers.IntegerField(min_value=1)
+
+
 class DefineTypeSerializer(VersionSerializer):
     proposta = serializers.JSONField()
 
@@ -84,3 +88,19 @@ class DefineTypeSerializer(VersionSerializer):
                 "Proposta inválida: confira tipos, chaves snake_case únicas e limites de campos."
             ) from exc
         return proposal.model_dump()
+
+
+class AuditEntrySerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    documento_id_snapshot = serializers.UUIDField()
+    evento = serializers.CharField()
+    versao = serializers.IntegerField()
+    status = serializers.CharField()
+    tipo_id_snapshot = serializers.IntegerField(allow_null=True)
+    ged_status = serializers.CharField()
+    detalhes = serializers.JSONField()
+    criado_em = serializers.DateTimeField()
+    ator = serializers.SerializerMethodField()
+
+    def get_ator(self, obj):
+        return obj.ator.get_username() if obj.ator else None

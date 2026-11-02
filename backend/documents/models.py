@@ -36,6 +36,8 @@ class Documento(models.Model):
         REVISAO = "revisao", "Em revisão"
         REVISAO_TIPO = "revisao_tipo", "Documento novo"
         APROVADO = "aprovado", "Aprovado"
+        REJEITADO = "rejeitado", "Rejeitado"
+        ARQUIVADO = "arquivado", "Arquivado"
         ERRO = "erro", "Erro"
 
     class GEDStatus(models.TextChoices):
@@ -100,3 +102,40 @@ class Documento(models.Model):
             self.ged_status in (self.GEDStatus.ERRO, self.GEDStatus.NAO_CONFIGURADO)
             or stale and self.ged_status in (self.GEDStatus.PENDENTE, self.GEDStatus.ENVIANDO)
         )
+
+
+class DocumentoAuditoria(models.Model):
+    documento = models.ForeignKey(
+        Documento, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="eventos_auditoria",
+    )
+    documento_id_snapshot = models.UUIDField(db_index=True)
+    proprietario_id_snapshot = models.PositiveBigIntegerField(null=True, blank=True, db_index=True)
+    ator = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+    )
+    evento = models.CharField(max_length=64)
+    versao = models.PositiveIntegerField()
+    status = models.CharField(max_length=20)
+    tipo_id_snapshot = models.BigIntegerField(null=True, blank=True)
+    ged_status = models.CharField(max_length=20)
+    detalhes = models.JSONField(default=dict)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-criado_em", "-id"]
+
+
+def registrar_evento(documento, evento, *, ator=None, detalhes=None):
+    return DocumentoAuditoria.objects.create(
+        documento=documento,
+        documento_id_snapshot=documento.pk,
+        proprietario_id_snapshot=documento.usuario_id,
+        ator=ator,
+        evento=evento,
+        versao=documento.versao,
+        status=documento.status,
+        tipo_id_snapshot=documento.tipo_id,
+        ged_status=documento.ged_status,
+        detalhes=detalhes or {},
+    )

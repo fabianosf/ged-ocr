@@ -10,7 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .ged import send_document
-from .models import Documento, TipoDocumento
+from .models import Documento, TipoDocumento, registrar_evento
 from .pipeline import PipelineError, detect_type, extract, prepare_image, run_ocr
 from .schema import InvalidDocument, check_schema, validation_errors
 from .services.discovery import discover
@@ -49,9 +49,15 @@ class SafeDocumentTask(Task):
             if self.name.endswith("sync_ged")
             else {"status": Documento.Status.ERRO, "erro_codigo": "processamento_falha_interna"}
         )
-        Documento.objects.filter(pk=job_id, versao=version).update(
-            **changes, atualizado_em=timezone.now(),
-        )
+        with transaction.atomic():
+            current = Documento.objects.select_for_update().filter(
+                pk=job_id, versao=version,
+            ).first()
+            if current:
+                for field, value in changes.items():
+                    setattr(current, field, value)
+                current.save(update_fields=[*changes, "atualizado_em"])
+                registrar_evento(current, "task_failed")
         logger.error("task_failed correlation_id=%s code=falha_interna", document.correlation_id)
 
 
@@ -66,6 +72,7 @@ def process_document(job_id: str, version: int) -> None:
             return
         document.status = Documento.Status.PROCESSANDO
         document.save(update_fields=["status", "atualizado_em"])
+        registrar_evento(document, "processing_started")
     logger.info("process_started correlation_id=%s", document.correlation_id)
     try:
         types = list(TipoDocumento.objects.filter(ativo=True).values(
@@ -76,7 +83,7 @@ def process_document(job_id: str, version: int) -> None:
         with processing_stage(document, version, "preparacao"):
             image = prepare_image(document.foto.path)
         if document.somente_extracao:
-            ocr, type_id, schema = document.ocr, None, document.esquema
+            ocr, type_id, schema = document.ocr, document.tipo_id, document.esquema
         else:
             with processing_stage(document, version, "leitura"):
                 ocr = run_ocr(image)
@@ -109,22 +116,39 @@ def process_document(job_id: str, version: int) -> None:
         with processing_stage(document, version, "extracao"):
             result = extract(image, ocr, schema)
         changes = {"extraido": result} if not document.extraido else {}
-        Documento.objects.filter(
-            pk=job_id, versao=version, status=Documento.Status.PROCESSANDO,
-        ).update(
-            **changes, tipo_id=type_id, esquema=schema, resultado=result, extracao_versao=version,
-            erros_validacao=validation_errors(result, schema),
-            status=Documento.Status.REVISAO_TIPO if type_id is None else Documento.Status.REVISAO,
-            atualizado_em=timezone.now(), erro_codigo="", etapa="concluido",
-        )
+        with transaction.atomic():
+            current = Documento.objects.select_for_update().filter(
+                pk=job_id, versao=version, status=Documento.Status.PROCESSANDO,
+            ).first()
+            if current:
+                current.extraido = changes.get("extraido", current.extraido)
+                current.tipo_id = type_id
+                current.esquema = schema
+                current.resultado = result
+                current.extracao_versao = version
+                current.erros_validacao = validation_errors(result, schema)
+                current.status = (
+                    Documento.Status.REVISAO_TIPO if type_id is None
+                    else Documento.Status.REVISAO
+                )
+                current.erro_codigo = ""
+                current.etapa = "concluido"
+                current.save()
+                registrar_evento(current, "processing_completed")
         logger.info("process_completed correlation_id=%s", document.correlation_id)
     except (PipelineError, InvalidDocument, SoftTimeLimitExceeded, OSError) as exc:
         code = exc.code if isinstance(exc, PipelineError) else (
             "tempo_excedido" if isinstance(exc, SoftTimeLimitExceeded) else "processamento_invalido"
         )
-        Documento.objects.filter(pk=job_id, versao=version).update(
-            status=Documento.Status.ERRO, erro_codigo=code, atualizado_em=timezone.now(),
-        )
+        with transaction.atomic():
+            current = Documento.objects.select_for_update().filter(
+                pk=job_id, versao=version,
+            ).first()
+            if current:
+                current.status = Documento.Status.ERRO
+                current.erro_codigo = code
+                current.save(update_fields=["status", "erro_codigo", "atualizado_em"])
+                registrar_evento(current, "processing_failed")
         logger.error("process_failed correlation_id=%s code=%s", document.correlation_id, code)
 
 
@@ -141,17 +165,28 @@ def sync_ged(job_id: str, version: int) -> None:
             return
         document.ged_status = Documento.GEDStatus.ENVIANDO
         document.save(update_fields=["ged_status", "atualizado_em"])
+        registrar_evento(document, "ged_sending")
     try:
         send_document(document)
-        Documento.objects.filter(pk=job_id, versao=version).update(
-            ged_status=Documento.GEDStatus.ENVIADO, ged_erro_codigo="",
-            atualizado_em=timezone.now(),
-        )
+        with transaction.atomic():
+            current = Documento.objects.select_for_update().filter(
+                pk=job_id, versao=version,
+            ).first()
+            if current:
+                current.ged_status = Documento.GEDStatus.ENVIADO
+                current.ged_erro_codigo = ""
+                current.save(update_fields=["ged_status", "ged_erro_codigo", "atualizado_em"])
+                registrar_evento(current, "ged_sent")
         logger.info("ged_completed correlation_id=%s", document.correlation_id)
     except (PipelineError, OSError, SoftTimeLimitExceeded) as exc:
         code = exc.code if isinstance(exc, PipelineError) else "ged_envio_interrompido"
-        Documento.objects.filter(pk=job_id, versao=version).update(
-            ged_status=Documento.GEDStatus.ERRO, ged_erro_codigo=code,
-            atualizado_em=timezone.now(),
-        )
+        with transaction.atomic():
+            current = Documento.objects.select_for_update().filter(
+                pk=job_id, versao=version,
+            ).first()
+            if current:
+                current.ged_status = Documento.GEDStatus.ERRO
+                current.ged_erro_codigo = code
+                current.save(update_fields=["ged_status", "ged_erro_codigo", "atualizado_em"])
+                registrar_evento(current, "ged_failed")
         logger.error("ged_failed correlation_id=%s code=%s", document.correlation_id, code)

@@ -4,7 +4,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
-from documents.models import Documento, TipoDocumento
+from documents.models import Documento, DocumentoAuditoria, TipoDocumento
 from documents.tasks import process_document, sync_ged
 
 
@@ -50,6 +50,19 @@ def test_delete_requires_current_version(client, document):
 def test_repeated_delete_is_not_found(client, document):
     assert delete(client, document).status_code == 204
     assert delete(client, document).status_code == 404
+
+
+def test_deletion_keeps_audit_event_after_document_removal(client, document):
+    document_id = document.id
+    assert delete(client, document).status_code == 204
+    event = DocumentoAuditoria.objects.get(
+        documento_id_snapshot=document_id, evento="document_deleted",
+    )
+    assert event.documento is None
+    assert event.ator == document.usuario
+    response = client.get("/api/auditoria/")
+    assert response.status_code == 200
+    assert response.data["results"][0]["documento_id_snapshot"] == str(document_id)
 
 
 def test_delete_does_not_remove_external_ged_copy(client, document):

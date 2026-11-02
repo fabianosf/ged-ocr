@@ -27,7 +27,8 @@ export interface Document {
   esquema: Schema;
   resultado: Result;
   erros_validacao: { campo: string; regra: string; mensagem: string }[];
-  status: "pendente" | "processando" | "revisao_tipo" | "revisao" | "aprovado" | "erro";
+  status: "pendente" | "processando" | "revisao_tipo" | "revisao" | "aprovado"
+    | "rejeitado" | "arquivado" | "erro";
   erro_codigo: string;
   erro_mensagem: string;
   etapa: string;
@@ -84,4 +85,18 @@ export interface DocumentType {
   descricao: string;
   ativo: boolean;
   esquema: Schema;
+}
+export interface DocumentTypeOption {
+  id: number;
+  nome: string;
+}
+export interface AuditEvent {
+  evento: string;
+  versao: number;
+  status: string;
+  tipo_id_snapshot: number | null;
+  ged_status: string;
+  detalhes: Record<string, unknown>;
+  criado_em: string;
+  ator: string | null;
 }
