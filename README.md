@@ -277,6 +277,10 @@ Configure `LLM_BASE_URL`, `LLM_API_KEY` e `LLM_MODEL`. O provedor deve suportar
 Layouts conhecidos usam duas chamadas: classificação nos tipos ativos e extração
 com seu esquema. Layout desconhecido adiciona descoberta entre classificação e
 extração. Sem tipos ativos, pula classificação: descoberta + extração.
+A classificação considera os primeiros 100 tipos ativos por ID e envia somente
+ID, nome e descrição ao LLM. Quando há mais tipos, registra aviso com limite e
+correlation_id, sem nomes ou conteúdo documental; tipos fora do corte não são
+candidatos à classificação automática e continuam disponíveis para associação manual.
 Sem LLM configurado, o job fica em erro `llm_nao_configurado`, com mensagem em
 português e link **Abrir Configuração**. Essa tela explica as variáveis do servidor;
 não recebe nem expõe chaves. Recrie backend/worker após alterar o ambiente.

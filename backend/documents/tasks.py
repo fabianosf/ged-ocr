@@ -76,9 +76,15 @@ def process_document(job_id: str, version: int) -> None:
         registrar_evento(document, "processing_started")
     logger.info("process_started correlation_id=%s", document.correlation_id)
     try:
-        types = list(TipoDocumento.objects.filter(ativo=True).values(
+        types = list(TipoDocumento.objects.filter(ativo=True).order_by("id").values(
             "id", "nome", "descricao", "esquema",
-        ))
+        )[:101])
+        if len(types) > 100:
+            logger.warning(
+                "classification_types_truncated correlation_id=%s limit=%s",
+                document.correlation_id, 100,
+            )
+            types = types[:100]
         if not settings.LLM_API_KEY or not settings.LLM_MODEL:
             raise PipelineError("llm_nao_configurado")
         with processing_stage(document, version, "preparacao"):
