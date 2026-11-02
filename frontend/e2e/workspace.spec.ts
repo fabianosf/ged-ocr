@@ -134,6 +134,27 @@ test("expired session allows reauthentication without losing review edits", asyn
     await page.getByRole("button", { name: "Entrar", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Código", exact: true })).toHaveValue("RASCUNHO");
   });
+test("idle polling slows down and hidden tabs stop requesting documents", async ({ page }) => {
+  await page.clock.install();
+  await mockWorkspace(page);
+  await expect(page.locator(".job-open")).toBeVisible();
+  let requests = 0;
+  page.on("request", (request) => { if (request.url().includes("/documentos/?")) requests++; });
+  await page.clock.runFor(3000);
+  expect(requests).toBe(0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.clock.runFor(60000);
+  expect(requests).toBe(0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => requests).toBe(1);
+});
+
 test("upload works after asynchronous confirmation and decorative effects do not intercept input", async ({ page }) => {
   const mock = await mockWorkspace(page);
   await page.getByLabel("Foto do documento", { exact: true }).setInputFiles({

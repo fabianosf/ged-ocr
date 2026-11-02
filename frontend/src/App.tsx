@@ -31,6 +31,7 @@ const labels: Record<Document["status"], string> = {
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [visible, setVisible] = useState(document.visibilityState === "visible");
   const [documents, setDocuments] = useState<Page<Document> | null>(null);
   const [selected, setSelected] = useState<Document | null>(null);
   const [error, setError] = useState("");
@@ -70,6 +71,11 @@ export default function App() {
     setSession(value);
   };
   useEffect(() => {
+    const change = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", change);
+    return () => document.removeEventListener("visibilitychange", change);
+  }, []);
+  useEffect(() => {
     const expire = () => setSessionExpired(true);
     window.addEventListener("session-expired", expire);
     return () => window.removeEventListener("session-expired", expire);
@@ -86,21 +92,26 @@ export default function App() {
   const selectedId = selected?.id;
   const authenticated = session?.autenticado;
   useEffect(() => {
-    if (!authenticated || deletingId || sessionExpired) return;
+    if (!authenticated || deletingId || sessionExpired || !visible) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
+      let active = false;
       try {
         const list = await api<Page<Document>>(`documentos/?page=${page}`, {
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
         setDocuments(list);
+        active = list.results.some((item) => ["pendente", "processando"].includes(item.status)
+          || ["pendente", "enviando"].includes(item.ged_status));
         if (selectedId) {
           const document = await api<Document>(`documentos/${selectedId}/`, {
             signal: controller.signal,
           });
           if (controller.signal.aborted) return;
+          active ||= ["pendente", "processando"].includes(document.status)
+            || ["pendente", "enviando"].includes(document.ged_status);
           setSelected((current) => dirty.current ? current : current?.id === document.id
             && current.versao === document.versao && current.status === document.status
             && current.ged_status === document.ged_status
@@ -112,12 +123,12 @@ export default function App() {
       } catch (cause) {
         if (!controller.signal.aborted) setError(message(cause));
       } finally {
-        if (!controller.signal.aborted) timer = setTimeout(() => void refresh(), 2500);
+        if (!controller.signal.aborted) timer = setTimeout(() => void refresh(), active ? 2500 : 15000);
       }
     }
     void refresh();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [authenticated, page, selectedId, deletingId, listVersion, sessionExpired]);
+  }, [authenticated, page, selectedId, deletingId, listVersion, sessionExpired, visible]);
 
   async function deleteDocument(document: Document) {
     if (!document.pode_excluir || busy) return;
