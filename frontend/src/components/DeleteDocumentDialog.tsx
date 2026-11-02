@@ -3,12 +3,12 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "./ui/alert-dialog";
-import type { Document } from "../types";
+import type { DocumentSummary } from "../types";
 
 export function DeleteDocumentDialog({
   document, busy, error, unsaved, onCancel, onConfirm, onRestoreFocus,
 }: {
-  document: Document | null;
+  document: DocumentSummary | null;
   busy: boolean;
   error: string;
   unsaved: boolean;

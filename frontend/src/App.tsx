@@ -19,7 +19,7 @@ import {
   ArrowLeft, ArrowRight, CheckCircle2, CircleAlert, FileScan, Files,
   LoaderCircle, LogOut, RotateCw, Settings2, Trash2, UploadCloud, X,
 } from "lucide-react";
-import type { Document, Page, Session } from "./types";
+import type { Document, DocumentSummary, Page, Session } from "./types";
 
 const labels: Record<Document["status"], string> = {
   pendente: "Na fila", processando: "Processando", revisao: "Revisão",
@@ -32,7 +32,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [visible, setVisible] = useState(document.visibilityState === "visible");
-  const [documents, setDocuments] = useState<Page<Document> | null>(null);
+  const [documents, setDocuments] = useState<Page<DocumentSummary> | null>(null);
   const [selected, setSelected] = useState<Document | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,7 +40,7 @@ export default function App() {
   const [config, setConfig] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [listVersion, setListVersion] = useState(0);
-  const [deleteTarget, setDeleteTarget] = useState<Document | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DocumentSummary | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [success, setSuccess] = useState("");
   const deleteTrigger = useRef<HTMLButtonElement | null>(null);
@@ -98,7 +98,7 @@ export default function App() {
     async function refresh() {
       let active = false;
       try {
-        const list = await api<Page<Document>>(`documentos/?page=${page}`, {
+        const list = await api<Page<DocumentSummary>>(`documentos/?page=${page}&resumo=1`, {
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
@@ -130,7 +130,7 @@ export default function App() {
     return () => { controller.abort(); clearTimeout(timer); };
   }, [authenticated, page, selectedId, deletingId, listVersion, sessionExpired, visible]);
 
-  async function deleteDocument(document: Document) {
+  async function deleteDocument(document: DocumentSummary) {
     if (!document.pode_excluir || busy) return;
     setDeletingId(document.id); setBusy(true); setDeleteError(""); setSuccess("");
     try {
@@ -354,7 +354,12 @@ export default function App() {
                 aria-pressed={selectedId === document.id}
                 onClick={async () => {
                   if (selectedId !== document.id && await mayLeave()) {
-                    dirty.current = false; setError(""); setSelected(document);
+                    setBusy(true); setError("");
+                    try {
+                      const detail = await api<Document>(`documentos/${document.id}/`);
+                      dirty.current = false; setSelected(detail);
+                    } catch (cause) { setError(message(cause)); }
+                    finally { setBusy(false); }
                   }
                 }}>
                 <FileScan className="size-5 text-primary" aria-hidden="true" />

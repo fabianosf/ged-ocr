@@ -220,6 +220,7 @@ O token deve ser atualizado após login/logout.
 |---|---|
 | `POST /api/documentos/upload/` | multipart `foto`; **202** `{job_id, correlation_id, status}` |
 | `GET /api/documentos/` | Lista paginada; usuário vê seus jobs, equipe vê todos |
+| `GET /api/documentos/?resumo=1` | Lista enxuta opt-in para cartões, sem esquemas, propostas ou resultados; detalhe permanece completo |
 | `GET /api/documentos/{job_id}/` | Estado, resultado, esquema, validações e versão |
 | `GET /api/documentos/{job_id}/foto/` | Foto privada, autenticada |
 | `PATCH /api/documentos/{job_id}/revisao/` | `{versao, resultado, linhas?}`; recalcula validações |

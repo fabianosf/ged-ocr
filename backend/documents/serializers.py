@@ -61,6 +61,15 @@ class DocumentoSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class DocumentoResumoSerializer(DocumentoSerializer):
+    class Meta(DocumentoSerializer.Meta):
+        fields = [
+            "id", "tipo_nome", "status", "etapa", "versao", "criado_em",
+            "ged_status", "pode_excluir", "pode_reprocessar",
+        ]
+        read_only_fields = fields
+
+
 class ReviewSerializer(serializers.Serializer):
     versao = serializers.IntegerField(min_value=1)
     resultado = serializers.JSONField()

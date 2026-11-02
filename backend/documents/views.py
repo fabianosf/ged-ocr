@@ -25,6 +25,7 @@ from .serializers import (
     AssignTypeSerializer,
     AuditEntrySerializer,
     DefineTypeSerializer,
+    DocumentoResumoSerializer,
     DocumentoSerializer,
     ReviewSerializer,
     TipoSerializer,
@@ -142,10 +143,20 @@ def enqueue(document: Documento, *, ged: bool = False) -> None:
 class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = DocumentoSerializer
 
+    def get_serializer_class(self):
+        if self.action == "list" and self.request.query_params.get("resumo") == "1":
+            return DocumentoResumoSerializer
+        return super().get_serializer_class()
+
     def get_queryset(self):
         queryset = Documento.objects.select_related("tipo")
         if self.action == "list":
             queryset = queryset.defer("ocr", "extraido")
+            if self.request.query_params.get("resumo") == "1":
+                queryset = queryset.defer(
+                    "esquema", "resultado", "proposta", "proposta_original",
+                    "esquema_provisorio", "erros_validacao",
+                )
         return queryset if self.request.user.is_staff else queryset.filter(usuario=self.request.user)
 
     def _get_locked_document(self):

@@ -47,6 +47,9 @@ export interface Document {
   ged_erro_codigo: string;
   ged_erro_mensagem: string;
 }
+export type DocumentSummary = Pick<Document,
+  "id" | "tipo_nome" | "status" | "etapa" | "versao" | "criado_em"
+  | "ged_status" | "pode_excluir" | "pode_reprocessar">;
 export interface Page<T> {
   count: number;
   next: string | null;
