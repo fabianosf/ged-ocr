@@ -25,6 +25,7 @@ class TipoSerializer(serializers.ModelSerializer):
 
 
 class DocumentoSerializer(serializers.ModelSerializer):
+    auditoria_id = serializers.SerializerMethodField()
     tipo_nome = serializers.CharField(source="tipo.nome", read_only=True, default=None)
     pode_aprovar_tipo = serializers.SerializerMethodField()
     erro_mensagem = serializers.SerializerMethodField()
@@ -32,6 +33,9 @@ class DocumentoSerializer(serializers.ModelSerializer):
     pode_reprocessar = serializers.BooleanField(read_only=True)
     pode_reenviar_ged = serializers.BooleanField(read_only=True)
     pode_excluir = serializers.BooleanField(read_only=True)
+
+    def get_auditoria_id(self, obj):
+        return obj.eventos_auditoria.order_by("-id").values_list("id", flat=True).first()
 
     def get_pode_aprovar_tipo(self, obj) -> bool:
         return can_approve_type(self.context["request"].user)
@@ -52,7 +56,7 @@ class DocumentoSerializer(serializers.ModelSerializer):
             "pode_aprovar_tipo", "erro_mensagem",
             "pode_reprocessar", "pode_reenviar_ged", "pode_excluir",
             "ged_erro_mensagem",
-            "etapa",
+            "etapa", "auditoria_id",
         ]
         read_only_fields = fields
 

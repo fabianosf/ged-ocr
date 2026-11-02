@@ -21,6 +21,7 @@ export interface Schema {
   maxItems?: number;
 }
 export interface Document {
+  auditoria_id?: number | null;
   id: string;
   correlation_id: string;
   tipo_nome: string | null;

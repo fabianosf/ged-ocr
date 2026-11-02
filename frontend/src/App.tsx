@@ -100,6 +100,7 @@ export default function App() {
             && current.versao === document.versao && current.status === document.status
             && current.ged_status === document.ged_status
             && current.etapa === document.etapa
+            && current.auditoria_id === document.auditoria_id
             && current.pode_reprocessar === document.pode_reprocessar
             && current.pode_reenviar_ged === document.pode_reenviar_ged ? current : document);
         }

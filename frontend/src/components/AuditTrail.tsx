@@ -39,7 +39,7 @@ export function AuditTrail({ document }: { document: GedDocument }) {
         if (!controller.signal.aborted) setError(message(cause));
       });
     return () => controller.abort();
-  }, [document.id, document.versao]);
+  }, [document.id, document.versao, document.auditoria_id]);
 
   return (
     <section className="workspace-panel">
