@@ -1,0 +1,10 @@
+{
+  "types": [],
+  "documents": [
+    {
+      "file": "photo.ppm",
+      "expected": {"codigo": "EXEMPLO", "itens": [{"nome": "Item sintético"}]},
+      "synthetic_prediction": {"codigo": "EXEMPLO", "itens": [{"nome": null}]}
+    }
+  ]
+}
