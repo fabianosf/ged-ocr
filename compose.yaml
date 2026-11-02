@@ -50,7 +50,7 @@ services:
     command: celery -A config worker --loglevel=WARNING --concurrency=1
     volumes:
       - media_data:/app/media
-      - paddle_cache:/root/.paddlex
+      - paddle_cache:/home/app/.paddlex
     healthcheck:
       test: ["CMD-SHELL", "celery -A config inspect ping --timeout=5 | grep -q pong"]
       interval: 30s

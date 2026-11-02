@@ -48,6 +48,21 @@ administrador deve verificar o limite e o tamanho da tabela antes de repetir.
 
 Para parar: `docker compose down`. Não use `down -v` se precisar preservar os dados.
 
+Backend e worker executam como `app` (UID/GID `10001`), sem privilégios de root.
+O cache Paddle fica em `/home/app/.paddlex`. Volumes novos já recebem as
+permissões corretas. Ao atualizar uma instalação com volumes criados pela versão
+anterior, faça backup e ajuste apenas a propriedade desses volumes antes de subir:
+
+```sh
+docker compose stop backend worker frontend
+docker compose build backend worker
+docker compose run --rm --no-deps --user root backend \
+  chown -R 10001:10001 /app/media /app/staticfiles
+docker compose run --rm --no-deps --user root worker \
+  chown -R 10001:10001 /home/app/.paddlex
+docker compose up -d --wait
+```
+
 ### Backup e restauração local
 
 Para manter banco e fotos consistentes, pare temporariamente a aplicação e o
