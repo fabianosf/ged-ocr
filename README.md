@@ -32,6 +32,9 @@ GET de sessão e logout não consomem esse limite. Exceder o limite retorna 429
 com `Retry-After`, sem alterar as demais respostas. O cache de throttling usa o
 Redis já configurado em `CELERY_BROKER_URL`, compartilhado entre os workers da
 API; os testes usam cache em memória isolado.
+O Nginx sobrescreve `X-Forwarded-For` com o IP observado e o DRF confia em um
+proxy. Mantenha a porta direta do backend restrita a `127.0.0.1`, como no Compose;
+ao adicionar outros proxies, revise essa configuração de confiança.
 O modelo OCR é reutilizado por processo do worker, com duas threads de CPU, sem
 guardar fotos/OCR no cache do modelo. O Compose desativa a checagem inicial de
 conectividade com repositórios de modelos; downloads necessários continuam sujeitos

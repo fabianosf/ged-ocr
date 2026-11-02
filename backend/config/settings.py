@@ -67,6 +67,7 @@ REST_FRAMEWORK = {
         "user": "600/min",
         "login": "5/min",
     },
+    "NUM_PROXIES": 1,
 }
 LANGUAGE_CODE = "pt-br"
 TIME_ZONE = "UTC"

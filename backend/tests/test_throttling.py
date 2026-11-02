@@ -45,6 +45,26 @@ def test_login_limit_also_applies_to_authenticated_users(client, user):
     assert client.post("/api/session/", credentials).status_code == 429
 
 
+def test_login_limit_uses_only_the_ip_supplied_by_the_trusted_proxy(db):
+    client = APIClient()
+    with patch("documents.views.authenticate", return_value=None) as authenticate:
+        for index in range(5):
+            response = client.post(
+                "/api/session/", {},
+                HTTP_X_FORWARDED_FOR=f"192.0.2.{index}, 198.51.100.1",
+            )
+            assert response.status_code == 400
+        response = client.post(
+            "/api/session/", {},
+            HTTP_X_FORWARDED_FOR="192.0.2.99, 198.51.100.1",
+        )
+        assert response.status_code == 429
+        assert authenticate.call_count == 5
+        assert client.post(
+            "/api/session/", {}, HTTP_X_FORWARDED_FOR="198.51.100.2",
+        ).status_code == 400
+
+
 @pytest.mark.parametrize("authenticated", [False, True])
 def test_api_rate_limits_by_ip_or_user(user, authenticated):
     class PublicView(APIView):
