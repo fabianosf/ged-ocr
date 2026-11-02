@@ -14,7 +14,10 @@ const example = JSON.stringify({
   properties: { campo: { type: ["string", "null"], title: "Campo" } },
 }, null, 2);
 
-export function DocumentTypes() {
+export function DocumentTypes({ onDirtyChange, beforeNavigate }: {
+  onDirtyChange: (dirty: boolean) => void;
+  beforeNavigate: () => Promise<boolean>;
+}) {
   const [types, setTypes] = useState<Page<DocumentType> | null>(null);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<number | null>(null);
@@ -49,6 +52,7 @@ export function DocumentTypes() {
       setSelected(type.id);
       setTypes(await api<Page<DocumentType>>(`tipos/?page=${page}`));
       setSaved("Configuração salva. Jobs já processados mantêm seu esquema original.");
+      onDirtyChange(false);
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -62,13 +66,17 @@ export function DocumentTypes() {
       <h2>Tipos de documento</h2>
       <p>JSON Schema define campos, tabelas e validações. Sem regras específicas no código.</p>
       <div className="actions">
-        <Button variant="outline" disabled={busy} onClick={() => {
+        <Button variant="outline" disabled={busy} onClick={async () => {
+          if (!await beforeNavigate()) return;
+          onDirtyChange(false);
           setSelected(null); setName(""); setDescription(""); setActive(true);
           setSchema(example); setError(""); setSaved("");
         }}><Plus />Novo tipo</Button>
         {types?.results.map((type) => (
           <Button variant={selected === type.id ? "secondary" : "outline"}
-            disabled={busy} key={type.id} aria-pressed={selected === type.id} onClick={() => {
+            disabled={busy} key={type.id} aria-pressed={selected === type.id} onClick={async () => {
+            if (!await beforeNavigate()) return;
+            onDirtyChange(false);
             setSelected(type.id); setName(type.nome); setDescription(type.descricao);
             setActive(type.ativo); setSchema(JSON.stringify(type.esquema, null, 2));
             setError(""); setSaved("");
@@ -79,7 +87,7 @@ export function DocumentTypes() {
         <Button variant="ghost" disabled={busy || !types?.next}
           onClick={() => setPage(page + 1)}>Próxima<ArrowRight /></Button>
       </div>
-      <form onSubmit={(event) => void save(event)}>
+      <form onChange={() => onDirtyChange(true)} onSubmit={(event) => void save(event)}>
         <fieldset disabled={busy}>
         <legend>{selected ? "Editar tipo" : "Cadastrar tipo"}</legend>
         <label>Nome<Input required maxLength={120} value={name}
@@ -87,7 +95,9 @@ export function DocumentTypes() {
         <label>Descrição para detecção<Textarea value={description}
           onChange={(event) => setDescription(event.target.value)} /></label>
         <label className="check mb-4"><Checkbox checked={active}
-          onCheckedChange={(checked) => setActive(checked === true)} />Ativo</label>
+          onCheckedChange={(checked) => {
+            setActive(checked === true); onDirtyChange(true);
+          }} />Ativo</label>
         <label>Esquema JSON<Textarea className="schema-editor bg-muted font-mono text-xs leading-relaxed" required value={schema}
           onChange={(event) => setSchema(event.target.value)} spellCheck={false} /></label>
         <Button disabled={busy}>

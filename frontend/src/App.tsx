@@ -61,7 +61,6 @@ export default function App() {
   };
   const beforeDocumentAction = async () => {
     if (!await mayLeave()) return false;
-    dirty.current = false;
     return true;
   };
 
@@ -210,7 +209,9 @@ export default function App() {
         {session?.autenticado && <nav className="actions">
           <Button variant={config ? "ghost" : "secondary"} disabled={busy}
             aria-current={!config ? "page" : undefined}
-            onClick={() => { if (config) setConfig(false); }}><Files />Documentos</Button>
+            onClick={async () => {
+              if (config && await mayLeave()) { dirty.current = false; setConfig(false); }
+            }}><Files />Documentos</Button>
           <Button variant={config ? "secondary" : "ghost"} disabled={busy}
             aria-current={config ? "page" : undefined} onClick={() => void openConfig()}><Settings2 />Configuração</Button>
           <Button variant="ghost" disabled={busy} onClick={() => void signOut()}><LogOut />Sair</Button>
@@ -279,7 +280,8 @@ export default function App() {
               Fotos/OCR são enviados ao provedor configurado; confirme autorização e retenção.</p>
             {!session.admin && <p>O cadastro e edição global de tipos é reservado à equipe.</p>}
           </section>
-          {session.admin && <DocumentTypes />}
+          {session.admin && <DocumentTypes beforeNavigate={mayLeave}
+            onDirtyChange={(value) => { dirty.current = value; }} />}
         </>
       ) : (
         <>
@@ -421,9 +423,9 @@ export default function App() {
           <footer className="app-footer">
             <span>GED OCR · Inteligência documental</span><span>Extração assistida. Decisão humana.</span>
           </footer>
-          {confirmation.dialog}
         </>
       )}
+      {confirmation.dialog}
       <DeleteDocumentDialog document={deleteTarget} busy={deletingId !== null}
         error={deleteError} unsaved={deleteTarget?.id === selectedId && dirty.current}
         onCancel={() => { setDeleteTarget(null); setDeleteError(""); }}

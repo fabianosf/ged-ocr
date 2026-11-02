@@ -49,6 +49,10 @@ async function mockWorkspace(page: Page, initial: Document = fixture, loggedIn =
       await route.fulfill({ json: {
         autenticado: loggedIn, admin: true, csrfToken: "synthetic", llm_configurado: true,
       } });
+    } else if (url.endsWith("/auditoria/")) {
+      await route.fulfill({ json: [] });
+    } else if (url.endsWith("/ativos/")) {
+      await route.fulfill({ json: [] });
     } else if (url.endsWith("/foto/")) {
       await route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="800"><rect width="500" height="800" fill="#eee"/></svg>' });
     } else if (url.includes("/tipos/")) {
@@ -77,10 +81,29 @@ async function mockWorkspace(page: Page, initial: Document = fixture, loggedIn =
         ? { count: 1, next: null, previous: null, results: [document] } : document });
     }
   });
+
   await page.goto("/");
   return { submitted };
 }
 
+test("cancelling document action keeps local review navigation protected", async ({ page }) => {
+    await mockWorkspace(page);
+    await page.locator(".job-open").click();
+    await page.getByRole("textbox", { name: "Código", exact: true }).fill("EDITADO");
+    await page.getByRole("button", { name: "Rejeitar", exact: true }).click();
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page.getByRole("alertdialog").getByRole("button", { name: "Descartar ajustes", exact: true }).click();
+    await page.getByRole("button", { name: "Configuração", exact: true }).click();
+    await expect(page.getByRole("alertdialog")).toBeVisible();
+  });
+
+  test("document type edits are protected when leaving configuration", async ({ page }) => {
+    await mockWorkspace(page);
+    await page.getByRole("button", { name: "Configuração", exact: true }).click();
+    await page.getByLabel("Nome", { exact: true }).fill("Tipo alterado");
+    await page.getByRole("button", { name: "Documentos", exact: true }).click();
+    await expect(page.getByRole("alertdialog")).toBeVisible();
+  });
 test("branded login uses accessible controls and authenticates without changing the contract", async ({ page }, testInfo) => {
   const mock = await mockWorkspace(page, fixture, false);
   await expect(page.getByRole("heading", { name: "Acesse seu workspace" })).toBeVisible();
