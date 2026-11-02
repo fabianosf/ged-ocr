@@ -80,6 +80,10 @@ class Documento(models.Model):
 
     class Meta:
         ordering = ["-criado_em"]
+        indexes = [
+            models.Index(fields=["usuario", "-criado_em"], name="documento_usuario_criado_idx"),
+            models.Index(fields=["status"], name="documento_status_idx"),
+        ]
 
     @property
     def pode_excluir(self) -> bool:
