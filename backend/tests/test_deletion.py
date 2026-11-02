@@ -14,6 +14,7 @@ def delete(client, document, version=1):
     )
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("state", ["erro", "revisao", "revisao_tipo", "aprovado"])
 def test_delete_removes_photo_and_data_but_preserves_type(client, document, state):
     document.status = state
@@ -85,20 +86,39 @@ def test_delete_is_owner_or_staff_only(client, document, user):
     assert delete(client, document).status_code == 204
 
 
-def test_storage_failure_keeps_document_and_logs_no_personal_data(client, document):
+@pytest.mark.django_db(transaction=True)
+def test_storage_failure_reports_committed_deletion_without_personal_data(client, document):
     with (
         patch.object(document.foto.storage, "delete", side_effect=OSError("private-path")),
         patch("documents.views.logger.error") as log,
     ):
         response = delete(client, document)
     assert response.status_code == 500
-    assert "documento foi mantido" in str(response.data)
-    assert Documento.objects.filter(pk=document.pk).exists()
+    assert "registro foi excluído" in str(response.data)
+    assert not Documento.objects.filter(pk=document.pk).exists()
     assert document.foto.storage.exists(document.foto.name)
     log.assert_called_once_with(
         "exception=%s correlation_id=%s", "OSError", document.correlation_id,
     )
     assert "private-path" not in str(response.data)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_database_failure_does_not_delete_photo(client, document):
+    with patch("documents.views.registrar_evento", side_effect=RuntimeError("private-detail")):
+        with pytest.raises(RuntimeError):
+            delete(client, document)
+    assert Documento.objects.filter(pk=document.pk).exists()
+    assert document.foto.storage.exists(document.foto.name)
+
+
+def test_photo_deletion_waits_for_commit(client, document, django_capture_on_commit_callbacks):
+    with django_capture_on_commit_callbacks(execute=False) as callbacks:
+        assert delete(client, document).status_code == 204
+    assert document.foto.storage.exists(document.foto.name)
+    assert len(callbacks) == 1
+    callbacks[0]()
+    assert not document.foto.storage.exists(document.foto.name)
 
 
 def test_redelivered_tasks_do_not_recreate_deleted_documents(client, document):

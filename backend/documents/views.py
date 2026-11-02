@@ -163,20 +163,26 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
                 raise Conflict()
             if not document.pode_excluir:
                 raise Conflict("Aguarde o processamento ou envio ao GED terminar antes de excluir.")
-            try:
-                document.foto.delete(save=False)
-            except OSError as exc:
-                logger.error(
-                    "exception=%s correlation_id=%s", type(exc).__name__, document.correlation_id,
-                )
-                raise APIException(
-                    "Não foi possível remover a foto. O documento foi mantido; tente novamente."
-                ) from exc
+            storage, photo_name = document.foto.storage, document.foto.name
             correlation_id = document.correlation_id
+
+            def remove_photo():
+                try:
+                    storage.delete(photo_name)
+                except OSError as exc:
+                    logger.error(
+                        "exception=%s correlation_id=%s", type(exc).__name__, correlation_id,
+                    )
+                    raise APIException(
+                        "O registro foi excluído, mas não foi possível remover a foto. "
+                        "Solicite a remoção ao administrador."
+                    ) from exc
+
             registrar_evento(
                 document, "document_deleted", ator=request.user,
             )
             document.delete()
+            transaction.on_commit(remove_photo)
         logger.info("document_deleted correlation_id=%s", correlation_id)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

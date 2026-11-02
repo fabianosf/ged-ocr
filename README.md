@@ -205,7 +205,9 @@ já enviados ao GED.
 `DELETE /api/documentos/{job_id}/` recebe `{"versao": 1}` e retorna **204**.
 Somente o proprietário ou a equipe pode excluir. Versão desatualizada, job na fila/
 processando ou envio GED pendente/em andamento retorna **409**, sem apagar a foto.
-Falha ao remover a foto retorna erro explícito e mantém o registro para nova tentativa.
+A foto só é removida após o commit da exclusão. Falha no banco preserva a foto.
+Falha posterior no armazenamento retorna erro explícito: o registro já foi excluído,
+e o administrador deve remover a foto órfã do armazenamento.
 Mensagens gerais podem ser fechadas por **Fechar mensagem**; isso não apaga jobs.
 Tarefas antigas reenviadas pela fila ignoram registros já excluídos.
 
