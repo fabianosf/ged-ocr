@@ -14,7 +14,7 @@ const example = JSON.stringify({
   properties: { campo: { type: ["string", "null"], title: "Campo" } },
 }, null, 2);
 
-export function Types() {
+export function DocumentTypes() {
   const [types, setTypes] = useState<Page<DocumentType> | null>(null);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<number | null>(null);

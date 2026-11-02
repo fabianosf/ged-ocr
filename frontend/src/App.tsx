@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, api, message, setCsrfToken } from "./api";
 import { Discovery } from "./Discovery";
 import { Review } from "./Review";
-import { Types } from "./Types";
+import { DocumentTypes } from "./DocumentTypes";
 import { DeleteDocumentDialog } from "./components/DeleteDocumentDialog";
 import { DocumentActions } from "./components/DocumentActions";
 import { AuditTrail } from "./components/AuditTrail";
@@ -278,7 +278,7 @@ export default function App() {
               Fotos/OCR são enviados ao provedor configurado; confirme autorização e retenção.</p>
             {!session.admin && <p>O cadastro e edição global de tipos é reservado à equipe.</p>}
           </section>
-          {session.admin && <Types />}
+          {session.admin && <DocumentTypes />}
         </>
       ) : (
         <>
