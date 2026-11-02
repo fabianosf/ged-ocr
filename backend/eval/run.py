@@ -13,6 +13,20 @@ def counter(actual, expected):
     }
 
 
+def equal(actual, expected):
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return actual.keys() == expected.keys() and all(
+            equal(actual[key], value) for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            equal(left, right) for left, right in zip(actual, expected, strict=True)
+        )
+    return actual == expected
+
+
 def score(actual, expected):
     fields, tables = {}, {}
     for key, value in expected.items():
@@ -33,11 +47,14 @@ def score(actual, expected):
                         cells[metric] += counts[metric]
                         target[metric] += counts[metric]
             tables[key] = {
-                **counter(rows, value), "cells": cells, "columns": columns,
+                **counter(rows, value), "correct": int(equal(predicted, value)),
+                "cells": cells, "columns": columns,
                 "expected_rows": len(value), "predicted_rows": len(rows),
             }
         else:
             fields[key] = counter(predicted, value)
+            if key not in actual:
+                fields[key]["correct"] = 0
     return {"fields": fields, "tables": tables}
 
 
