@@ -2,7 +2,7 @@ import logging
 import uuid
 from collections.abc import Callable
 
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from rest_framework.views import exception_handler
 
 logger = logging.getLogger("documents")
@@ -11,6 +11,17 @@ logger = logging.getLogger("documents")
 class CorrelationMiddleware:
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response
+
+    def process_exception(self, request, exception):
+        if request.path.startswith("/api/"):
+            logger.error(
+                "exception=%s correlation_id=%s", type(exception).__name__, request.correlation_id,
+            )
+            return JsonResponse({
+                "erro": "Falha inesperada. Atualize a página.",
+                "correlation_id": request.correlation_id,
+            }, status=500)
+        return None
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
         # Only server-generated identifiers enter logs.

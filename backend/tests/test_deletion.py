@@ -106,8 +106,7 @@ def test_storage_failure_reports_committed_deletion_without_personal_data(client
 @pytest.mark.django_db(transaction=True)
 def test_database_failure_does_not_delete_photo(client, document):
     with patch("documents.views.registrar_evento", side_effect=RuntimeError("private-detail")):
-        with pytest.raises(RuntimeError):
-            delete(client, document)
+        assert delete(client, document).status_code == 500
     assert Documento.objects.filter(pk=document.pk).exists()
     assert document.foto.storage.exists(document.foto.name)
 
