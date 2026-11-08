@@ -129,6 +129,7 @@ def process_document(job_id: str, version: int) -> None:
             ).first()
             if current:
                 current.extraido = changes.get("extraido", current.extraido)
+                current.ocr = ocr
                 current.tipo_id = type_id
                 current.esquema = schema
                 current.resultado = result

@@ -3,7 +3,7 @@ import type { Document } from "../types";
 
 export const stageMessages: Record<string, string> = {
   preparacao: "Preparando sua foto para leitura.",
-  leitura: "Lendo os textos da foto. No primeiro uso, o serviço precisa carregar os modelos.",
+  leitura: "Lendo os textos da foto. Os modelos de leitura já foram preparados no serviço.",
   classificacao: "Identificando o tipo de documento com o serviço de inteligência artificial.",
   descoberta: "Identificando os rótulos e tabelas de um documento novo.",
   extracao: "Extraindo os valores dos campos. Aguardando a resposta do serviço de inteligência artificial.",

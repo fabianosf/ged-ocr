@@ -7,8 +7,17 @@ import { Checkbox } from "./components/ui/checkbox";
 import { NativeSelect } from "./components/ui/native-select";
 import { Badge } from "./components/ui/badge";
 import { Notice } from "./components/Notice";
-import { CheckCircle2, MapPin, Plus, Save, Trash2, UserCheck } from "lucide-react";
+import { CheckCircle2, CheckCheck, MapPin, Plus, Save, Trash2, UserCheck } from "lucide-react";
 import type { BBox, Document, Field, Result, Schema, Scalar } from "./types";
+
+function markReviewed(result: Result): Result {
+  return Object.fromEntries(Object.entries(result).map(([key, value]) => [
+    key,
+    Array.isArray(value)
+      ? value.map((row) => markReviewed(row))
+      : { ...value, revisado: true },
+  ]));
+}
 
 function fieldType(schema: Schema): string {
   return Array.isArray(schema.type) ? schema.type.find((type) => type !== "null")! : schema.type;
@@ -206,6 +215,11 @@ export function Review({ document, onUpdated, onDirtyChange }: {
           <small>Job: {document.id} · {document.status}</small>
         </div>
         {editable && <div className="actions">
+          <Button variant="outline" disabled={busy}
+            onClick={() => {
+              setResult((current) => markReviewed(current));
+              setDirty(true); onDirtyChange(true);
+            }}><CheckCheck />Marcar campos visíveis como revisados</Button>
           <Button variant="outline" disabled={busy || !dirty}
             onClick={() => void perform("revisao")}><Save />Salvar revisão</Button>
           <Button disabled={busy || dirty}

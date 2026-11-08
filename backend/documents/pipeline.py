@@ -36,10 +36,10 @@ def ocr_engine(detection_model: str, recognition_model: str):
 
     return PaddleOCR(
         use_doc_orientation_classify=False,
-        use_doc_unwarping=False, use_textline_orientation=False,
+        use_doc_unwarping=False, use_textline_orientation=True,
         text_detection_model_name=detection_model,
         text_recognition_model_name=recognition_model,
-        cpu_threads=2,
+        cpu_threads=settings.OCR_CPU_THREADS,
     )
 
 

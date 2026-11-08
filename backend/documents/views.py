@@ -157,6 +157,12 @@ class DocumentoViewSet(viewsets.ReadOnlyModelViewSet):
                     "esquema", "resultado", "proposta", "proposta_original",
                     "esquema_provisorio", "erros_validacao",
                 )
+            status_value = self.request.query_params.get("status")
+            if status_value:
+                allowed = {item.value for item in Documento.Status}
+                if status_value not in allowed:
+                    raise ValidationError({"status": "Status inválido."})
+                queryset = queryset.filter(status=status_value)
         return queryset if self.request.user.is_staff else queryset.filter(usuario=self.request.user)
 
     def _get_locked_document(self):

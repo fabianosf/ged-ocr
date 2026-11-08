@@ -3,6 +3,7 @@ import { api, message } from "../api";
 import { Button } from "./ui/button";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import { Notice } from "./Notice";
+import { useConfirmation } from "./useConfirmation";
 import type { Document, DocumentTypeOption } from "../types";
 import { Archive, LoaderCircle, RotateCw, XCircle } from "lucide-react";
 
@@ -16,6 +17,7 @@ export function DocumentActions({ document, onUpdated, disabled = false, beforeA
   const [typeId, setTypeId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const confirmation = useConfirmation();
 
   useEffect(() => {
     if (document.status !== "revisao_tipo") return;
@@ -31,12 +33,14 @@ export function DocumentActions({ document, onUpdated, disabled = false, beforeA
   async function perform(action: "atribuir-tipo" | "rejeitar" | "arquivar") {
     if (action === "atribuir-tipo" && !typeId) return;
     if (beforeAction && !await beforeAction()) return;
-    const confirmMessage = action === "rejeitar"
-      ? "Rejeitar este documento? Ele deixará de estar disponível para revisão."
-      : action === "arquivar"
-        ? "Arquivar este documento? Ele permanecerá armazenado, mas sairá do fluxo ativo."
-        : "";
-    if (confirmMessage && !window.confirm(confirmMessage)) return;
+    if (action === "rejeitar" && !await confirmation.confirm(
+      "Ele deixará de estar disponível para revisão.",
+      { title: "Rejeitar este documento?", cancel: "Cancelar", action: "Rejeitar" },
+    )) return;
+    if (action === "arquivar" && !await confirmation.confirm(
+      "Ele permanecerá armazenado, mas sairá do fluxo ativo.",
+      { title: "Arquivar este documento?", cancel: "Cancelar", action: "Arquivar" },
+    )) return;
     setBusy(true);
     setError("");
     try {
@@ -92,6 +96,7 @@ export function DocumentActions({ document, onUpdated, disabled = false, beforeA
         {canArchive && <Button variant="outline" disabled={locked}
           onClick={() => void perform("arquivar")}><Archive />Arquivar</Button>}
       </div>
+      {confirmation.dialog}
     </section>
   );
 }

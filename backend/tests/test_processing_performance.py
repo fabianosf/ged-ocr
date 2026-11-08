@@ -1,3 +1,4 @@
+import logging
 import sys
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -28,19 +29,47 @@ def test_thinking_disabled_only_for_official_deepseek(settings, base_url, disabl
         assert payload["thinking"] == {"type": "disabled"}
 
 
-def test_ocr_model_initialized_once_and_invalidated_on_configuration_change(monkeypatch):
+def test_ocr_model_initialized_once_and_invalidated_on_configuration_change(monkeypatch, settings):
     constructor = Mock()
     monkeypatch.setitem(sys.modules, "paddleocr", SimpleNamespace(PaddleOCR=constructor))
+    settings.OCR_CPU_THREADS = 4
     ocr_engine.cache_clear()
     try:
         first = ocr_engine("det", "rec")
         assert ocr_engine("det", "rec") is first
         assert constructor.call_count == 1
-        assert constructor.call_args.kwargs["cpu_threads"] == 2
+        assert constructor.call_args.kwargs["cpu_threads"] == 4
+        assert constructor.call_args.kwargs["use_textline_orientation"] is True
+        assert constructor.call_args.kwargs["use_doc_unwarping"] is False
         ocr_engine("new_det", "rec")
         assert constructor.call_count == 2
     finally:
         ocr_engine.cache_clear()
+
+
+def test_ocr_warmup_loads_configured_engine_in_worker_child(settings, caplog, monkeypatch):
+    from config.celery import warmup_ocr_engine
+
+    monkeypatch.setattr(logging.getLogger("documents"), "propagate", True)
+    settings.OCR_DETECTION_MODEL = "det"
+    settings.OCR_RECOGNITION_MODEL = "rec"
+    with caplog.at_level("INFO", logger="documents"):
+        with patch("documents.pipeline.ocr_engine") as engine:
+            warmup_ocr_engine()
+    engine.assert_called_once_with("det", "rec")
+    assert "ocr_warmup_started" in caplog.text
+    assert "ocr_warmup_finished" in caplog.text
+
+
+def test_ocr_warmup_failure_does_not_raise(caplog, monkeypatch):
+    from config.celery import warmup_ocr_engine
+
+    monkeypatch.setattr(logging.getLogger("documents"), "propagate", True)
+    with caplog.at_level("ERROR", logger="documents"):
+        with patch("documents.pipeline.ocr_engine", side_effect=RuntimeError("private")):
+            warmup_ocr_engine()
+    assert "exception=RuntimeError correlation_id=-" in caplog.text
+    assert "private" not in caplog.text
 
 
 def test_incomplete_output_fails_explicitly():

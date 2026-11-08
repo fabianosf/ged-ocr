@@ -23,7 +23,8 @@ aprovar. Cada campo deve ser explicitamente marcado como revisado. Colunas de
 tabelas também têm revisão individual; linhas podem ser adicionadas/removidas.
 
 O worker baixa modelos PaddleOCR no primeiro uso, exigindo internet e recursos
-de CPU/memória. O primeiro processamento pode ser mais lento. A API não importa
+de CPU/memória, e carrega o motor OCR na inicialização de cada processo filho.
+A API não importa
 OpenCV/PaddleOCR e não executa inferência. Arquivos ficam em volume compartilhado
 privado; não há rota pública de mídia.
 As APIs DRF limitam anônimos a 60 requisições/minuto e usuários autenticados a
@@ -35,8 +36,10 @@ API; os testes usam cache em memória isolado.
 O Nginx sobrescreve `X-Forwarded-For` com o IP observado e o DRF confia em um
 proxy. Mantenha a porta direta do backend restrita a `127.0.0.1`, como no Compose;
 ao adicionar outros proxies, revise essa configuração de confiança.
-O modelo OCR é reutilizado por processo do worker, com duas threads de CPU, sem
-guardar fotos/OCR no cache do modelo. O Compose desativa a checagem inicial de
+O modelo OCR é reutilizado por processo do worker, com `OCR_CPU_THREADS` threads
+de CPU (padrão 4, intervalo 1..16), sem guardar fotos/OCR no cache do modelo.
+A orientação de linha de texto fica ligada; desdobramento e orientação de
+documento permanecem desligados. O Compose desativa a checagem inicial de
 conectividade com repositórios de modelos; downloads necessários continuam sujeitos
 a falha explícita. A tela informa preparação, leitura, classificação, descoberta
 ou extração via `etapa`. Logs registram etapa, duração e correlation_id, nunca os dados.
@@ -473,6 +476,7 @@ Para executar OCR real fora do Docker, instale `requirements-worker.txt` e as
 bibliotecas nativas OpenCV/Paddle (`libgomp1`, `libgl1`, `libglib2.0-0` em Debian).
 `OCR_DETECTION_MODEL` usa detecção mobile; `OCR_RECOGNITION_MODEL` usa reconhecimento
 Latin mobile, incluindo português, por padrão. Troque o reconhecedor para outros idiomas.
+`OCR_CPU_THREADS` define as threads de CPU da inferência (padrão 4).
 API local: exporte as variáveis de `.env`, rode migrations e
 `python manage.py runserver`; worker: `celery -A config worker --concurrency=1`.
 Não use o backend de testes em produção.

@@ -105,6 +105,9 @@ if not 1024 <= LLM_MAX_OUTPUT_TOKENS <= 65536:
     raise ValueError("LLM_MAX_OUTPUT_TOKENS deve estar entre 1024 e 65536.")
 OCR_DETECTION_MODEL = os.getenv("OCR_DETECTION_MODEL", "PP-OCRv5_mobile_det")
 OCR_RECOGNITION_MODEL = os.getenv("OCR_RECOGNITION_MODEL", "latin_PP-OCRv5_mobile_rec")
+OCR_CPU_THREADS = int(os.getenv("OCR_CPU_THREADS", "4"))
+if not 1 <= OCR_CPU_THREADS <= 16:
+    raise ValueError("OCR_CPU_THREADS deve estar entre 1 e 16.")
 MIN_CONFIDENCE = float(os.getenv("MIN_CONFIDENCE", "0.7"))
 if not 0 <= MIN_CONFIDENCE <= 1:
     raise ValueError("MIN_CONFIDENCE deve estar entre 0 e 1.")

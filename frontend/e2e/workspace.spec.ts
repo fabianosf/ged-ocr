@@ -91,8 +91,9 @@ test("cancelling document action keeps local review navigation protected", async
     await page.locator(".job-open").click();
     await page.getByRole("textbox", { name: "Código", exact: true }).fill("EDITADO");
     await page.getByRole("button", { name: "Rejeitar", exact: true }).click();
-    page.once("dialog", (dialog) => dialog.dismiss());
     await page.getByRole("alertdialog").getByRole("button", { name: "Descartar ajustes", exact: true }).click();
+    await expect(page.getByRole("alertdialog").getByRole("button", { name: "Rejeitar", exact: true })).toBeVisible();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Cancelar", exact: true }).click();
     await page.getByRole("button", { name: "Configuração", exact: true }).click();
     await expect(page.getByRole("alertdialog")).toBeVisible();
   });

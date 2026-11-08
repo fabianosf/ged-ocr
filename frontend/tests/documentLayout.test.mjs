@@ -93,12 +93,13 @@ test("review grid retains per-cell editing, human checks, row actions and maxIte
   assert.match(addRow, /disabled=""/);
   assert.equal((html.match(/Revisado/g) ?? []).length, 5);
   assert.equal((html.match(/aria-checked="true"/g) ?? []).length, 1);
+  assert.match(html, /Marcar campos visíveis como revisados/);
 });
 
 test("read-only review keeps photo location buttons but removes mutation actions", () => {
   const html = render(Review, { ...document, status: "aprovado", ged_status: "nao_configurado" });
   assert.match(html, /aria-label="Localizar na foto: Quantidade · Linha 1"/);
-  assert.doesNotMatch(html, /Remover linha|Adicionar linha manual|Salvar revisão/);
+  assert.doesNotMatch(html, /Remover linha|Adicionar linha manual|Salvar revisão|Marcar campos visíveis/);
 });
 
 test("empty discovery table keeps column configuration and explicit no-rows notice", () => {
@@ -147,6 +148,10 @@ for (const [status, etapa, label] of [
     assert.doesNotMatch(html, /aria-valuenow|aria-valuemax|[0-9]+%/);
     assert.match(html, /Revisão humana/);
     assert.match(html, /Nenhum valor é aprovado automaticamente/);
+    if (etapa === "leitura") {
+      assert.match(html, /Os modelos de leitura já foram preparados no serviço/);
+      assert.doesNotMatch(html, /primeiro uso/);
+    }
   });
 }
 

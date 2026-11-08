@@ -105,7 +105,7 @@ def test_worker_success_and_duplicate_delivery(document, result, document_type):
     document.save()
     with (
         patch("documents.tasks.prepare_image", return_value=b"image"),
-        patch("documents.tasks.run_ocr", return_value=[]) as ocr,
+        patch("documents.tasks.run_ocr", return_value=[{"texto": "dados sintéticos"}]) as ocr,
         patch("documents.tasks.detect_type", return_value=document_type.id),
         patch("documents.tasks.extract", return_value=result),
     ):
@@ -116,6 +116,7 @@ def test_worker_success_and_duplicate_delivery(document, result, document_type):
     assert document.status == Documento.Status.REVISAO
     assert document.extraido == result
     assert document.esquema == document_type.esquema
+    assert document.ocr == [{"texto": "dados sintéticos"}]
 
 
 def test_manual_type_assignment_reuses_saved_ocr(document, result, document_type):

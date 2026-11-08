@@ -10,6 +10,7 @@ import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
 import { ProcessingProgress, stageMessages } from "./components/ProcessingProgress";
 import { Input } from "./components/ui/input";
+import { NativeSelect, NativeSelectOption } from "./components/ui/native-select";
 import { Card, CardContent, CardHeader } from "./components/ui/card";
 import { ShineBorder } from "./components/ui/shine-border";
 import { GridPattern } from "./components/ui/grid-pattern";
@@ -37,6 +38,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState("");
   const [config, setConfig] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [listVersion, setListVersion] = useState(0);
@@ -98,7 +100,8 @@ export default function App() {
     async function refresh() {
       let active = false;
       try {
-        const list = await api<Page<DocumentSummary>>(`documentos/?page=${page}&resumo=1`, {
+        const filter = statusFilter ? `&status=${encodeURIComponent(statusFilter)}` : "";
+        const list = await api<Page<DocumentSummary>>(`documentos/?page=${page}&resumo=1${filter}`, {
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
@@ -128,7 +131,7 @@ export default function App() {
     }
     void refresh();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [authenticated, page, selectedId, deletingId, listVersion, sessionExpired, visible]);
+  }, [authenticated, page, statusFilter, selectedId, deletingId, listVersion, sessionExpired, visible]);
 
   async function deleteDocument(document: DocumentSummary) {
     if (!document.pode_excluir || busy) return;
@@ -337,15 +340,29 @@ export default function App() {
             <small>JPEG, PNG ou WEBP · até 15 MB / 40 MP · extração assíncrona</small>
           </form>
           <section className="jobs">
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
               <div><h2 className="mb-1">Seus documentos</h2>
                 <p className="mb-0 text-sm text-muted-foreground">Abra para conferir ou exclua tentativas que não precisa manter.</p></div>
-              <Badge variant="secondary">{documents?.count ?? 0} documento(s)</Badge>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="mb-0 min-w-44">Status
+                  <NativeSelect aria-label="Filtrar documentos por status" value={statusFilter}
+                    onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}>
+                    <NativeSelectOption value="">Todos</NativeSelectOption>
+                    {Object.entries(labels).map(([value, label]) => (
+                      <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </label>
+                <Badge variant="secondary">{documents?.count ?? 0} documento(s)</Badge>
+              </div>
             </div>
             {documents?.count === 0 && <div className="empty-state">
               <Files className="mx-auto mb-3 size-8 text-muted-foreground" aria-hidden="true" />
-              <p className="mb-1 font-medium">Nenhum documento enviado.</p>
-              <p className="mb-0 text-sm text-muted-foreground">Comece enviando uma foto acima.</p>
+              <p className="mb-1 font-medium">{statusFilter
+                ? "Nenhum documento com este status." : "Nenhum documento enviado."}</p>
+              <p className="mb-0 text-sm text-muted-foreground">{statusFilter
+                ? "Altere o filtro ou envie uma nova foto."
+                : "Comece enviando uma foto acima."}</p>
             </div>}
             <div className="job-list">{documents?.results.map((document) => (
               <div key={document.id} className={`job-card ${selectedId === document.id ? "selected" : ""}`}>
